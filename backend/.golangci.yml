@@ -1,0 +1,20 @@
+version: "2"
+linters:
+  default: none
+  enable:
+    - gochecknoinits
+    - noctx
+    - errorlint
+    - rowserrcheck
+    - sqlclosecheck
+    - bodyclose
+    - govet
+    - staticcheck
+    - unused
+    - nilerr
+  exclusions:
+    paths:
+      - generated
+formatters:
+  enable:
+    - goimports

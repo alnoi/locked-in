@@ -1,0 +1,55 @@
+import SwiftUI
+import SwiftData
+
+@main
+struct PlannerApp: App {
+    var body: some Scene {
+        WindowGroup {
+            CalendarView()
+                .tint(.indigo)
+                .environment(\.locale, Locale(identifier: "ru_RU"))
+                #if os(macOS)
+                .frame(minWidth: 680, minHeight: 600)
+                #endif
+        }
+        .modelContainer(for: PlannerTask.self)
+    }
+}
+
+@Model
+final class PlannerTask {
+    var id: UUID
+    var title: String
+    var start: Date
+    var duration: Int
+    var completed: Bool
+
+    init(title: String, start: Date, duration: Int) {
+        self.id = UUID()
+        self.title = title
+        self.start = start
+        self.duration = duration
+        self.completed = false
+    }
+    var end: Date { start.addingTimeInterval(Double(duration) * 60) }
+}
+
+struct TaskDraft: Identifiable {
+    var id = UUID()
+    var task: PlannerTask?
+    var title: String
+    var start: Date
+    var duration: Int
+
+    init(task: PlannerTask) {
+        self.task = task
+        title = task.title
+        start = task.start
+        duration = task.duration
+    }
+    init(start: Date) {
+        title = ""
+        self.start = start
+        duration = 60
+    }
+}

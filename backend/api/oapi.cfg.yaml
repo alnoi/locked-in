@@ -1,0 +1,6 @@
+package: tracker_genapi
+generate:
+  models: true
+  gin-server: true
+  client: true
+output: generated/service/tracker/api.gen.go
