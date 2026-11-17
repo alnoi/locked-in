@@ -6,6 +6,10 @@ struct SettingsView: View {
   @Bindable var model: AppModel
   @Environment(\.dismiss) private var dismiss
   @State private var tab = 0
+  @State private var workdayStart = Calendar.current.date(bySettingHour: WorkdayPreferences.startMinutes / 60,
+    minute: WorkdayPreferences.startMinutes % 60, second: 0, of: .now)!
+  @State private var workdayEnd = Calendar.current.date(bySettingHour: WorkdayPreferences.endMinutes / 60,
+    minute: WorkdayPreferences.endMinutes % 60, second: 0, of: .now)!
   @State private var reminderTime = Calendar.current.date(
     bySettingHour: ReminderPreferences.dateOnlyMinutes / 60,
     minute: ReminderPreferences.dateOnlyMinutes % 60, second: 0, of: .now)!
@@ -15,6 +19,8 @@ struct SettingsView: View {
   @State private var testMessage: String?
   @State private var sendingTest = false
   @State private var working = false
+  @State private var pinging = false
+  @State private var pingSucceeded: Bool?
   init(model: AppModel) {
     self.model = model
     _mode = State(initialValue: model.settings.mode)
@@ -58,38 +64,66 @@ struct SettingsView: View {
             }
           }
         }.formStyle(.grouped).tabItem { Label("Напоминания", systemImage: "bell") }.tag(1)
+        workdayForm.tabItem { Label("Рабочий день", systemImage: "sun.max") }.tag(2)
       }.navigationTitle("Настройки")
         .toolbar {
           ToolbarItem(placement: .cancellationAction) {
-            Button("Закрыть") { dismiss() }.disabled(working || model.isLoading)
+            Button("Закрыть") { dismiss() }.keyboardShortcut(.cancelAction).disabled(working || model.isLoading)
           }
           ToolbarItem(placement: .confirmationAction) {
             Button(
-              tab == 1 ? "Сохранить" : working || model.isLoading ? "Подключение…" : "Применить"
+              tab != 0 ? "Сохранить" : working || model.isLoading ? "Подключение…" : "Применить"
             ) {
-              working = true
-              Task {
-                defer { working = false }
-                do {
-                  if tab == 1 {
-                    let parts = Calendar.current.dateComponents(
-                      [.hour, .minute], from: reminderTime)
-                    ReminderPreferences.dateOnlyMinutes =
-                      (parts.hour ?? 10) * 60 + (parts.minute ?? 0)
-                    await model.refreshReminders()
-                  } else {
-                    try await model.connect(ConnectionSettings(mode: mode, serverAddress: address))
-                  }
-                  dismiss()
-                } catch { message = model.friendly(error) }
-              }
-            }.disabled(working || model.isMutating || model.isLoading)
+              Task { await saveSettings() }
+            }.keyboardShortcut(.defaultAction).disabled(working || model.isMutating || model.isLoading)
           }
         }
     }.interactiveDismissDisabled(working || model.isLoading)
       #if os(macOS)
         .frame(width: 520, height: 590)
       #endif
+  }
+  private func saveSettings() async {
+    guard !working, !model.isMutating, !model.isLoading else { return }
+    working = true
+    defer { working = false }
+    do {
+      if tab == 2 {
+        let start = Calendar.current.dateComponents([.hour, .minute], from: workdayStart)
+        let end = Calendar.current.dateComponents([.hour, .minute], from: workdayEnd)
+        let startMinutes = (start.hour ?? 9) * 60 + (start.minute ?? 0)
+        let endMinutes = (end.hour ?? 21) * 60 + (end.minute ?? 0)
+        guard endMinutes > startMinutes else {
+          message = "Конец рабочего дня должен быть позже начала."
+          return
+        }
+        WorkdayPreferences.startMinutes = startMinutes
+        WorkdayPreferences.endMinutes = endMinutes
+        await model.refreshReminders()
+      } else if tab == 1 {
+        let parts = Calendar.current.dateComponents([.hour, .minute], from: reminderTime)
+        ReminderPreferences.dateOnlyMinutes = (parts.hour ?? 10) * 60 + (parts.minute ?? 0)
+        await model.refreshReminders()
+      } else {
+        try await model.connect(ConnectionSettings(mode: mode, serverAddress: address))
+      }
+      dismiss()
+    } catch { message = model.friendly(error) }
+  }
+  private var workdayForm: some View {
+    Form {
+      Section("Твой рабочий день") {
+        DatePicker("Начало", selection: $workdayStart, displayedComponents: .hourAndMinute)
+        DatePicker("Конец", selection: $workdayEnd, displayedComponents: .hourAndMinute)
+      }
+      Section {
+        Text("В конце рабочего дня придёт уведомление с количеством невыполненных задач, запланированных на сегодня. Если всё сделано, уведомления не будет.")
+          .font(.callout).foregroundStyle(.secondary)
+        Text("По умолчанию — с 09:00 до 21:00. Настройки сохраняются на этом устройстве.")
+          .font(.caption).foregroundStyle(.secondary)
+      }
+      if let message { Section { Text(message).font(.callout).foregroundStyle(.red) } }
+    }.formStyle(.grouped)
   }
   private var storageForm: some View {
     Form {
@@ -113,7 +147,33 @@ struct SettingsView: View {
       if mode == .server {
         Section {
           TextField("Адрес сервера", text: $address).autocorrectionDisabled()
+            .onSubmit { Task { await saveSettings() } }
           Text("http://127.0.0.1:8080").font(.caption.monospaced()).foregroundStyle(.secondary)
+          HStack(spacing: 10) {
+            Button("Установить соединение") {
+              let target = address
+              pinging = true
+              pingSucceeded = nil
+              Task {
+                defer { pinging = false }
+                do {
+                  let url = try ConnectionSettings(mode: .server, serverAddress: target).validatedURL()
+                  _ = try await HTTPRepository(baseURL: url).load()
+                  if address == target { pingSucceeded = true }
+                } catch {
+                  if address == target { pingSucceeded = false }
+                }
+              }
+            }.disabled(pinging || working)
+            if pinging { ProgressView().controlSize(.small) }
+            if let pingSucceeded {
+              Text(pingSucceeded ? "success" : "fail")
+                .foregroundStyle(pingSucceeded ? Color.green : Color.red)
+                .accessibilityLabel(pingSucceeded ? "ping success" : "ping fail")
+            }
+          }
+          .onChange(of: address) { _, _ in pingSucceeded = nil }
+
         } header: {
           Text("Подключение")
         } footer: {
@@ -142,7 +202,7 @@ struct SettingsView: View {
         }
       }
       Section("О приложении") {
-        LabeledContent("Locked In", value: "MVP · 0.2")
+        LabeledContent("TrackIt", value: "MVP · 0.2")
         Text("Задачи, идеи и время — в одном месте.").foregroundStyle(.secondary)
         if let date = model.lastRefresh {
           LabeledContent(

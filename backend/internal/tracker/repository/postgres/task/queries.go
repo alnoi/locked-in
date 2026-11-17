@@ -73,7 +73,7 @@ func selectQuery(filters models.GetTasksFilters) (string, pgx.NamedArgs) {
 	} else {
 		order += " ASC"
 	}
-	query := "-- selectTasks\nSELECT t.id, t.owner_id, t.title, t.description, t.list_id, t.parent_id, t.deadline_date, t.deadline_at, t.planned_at, t.duration_minutes, t.reminder_mode, t.reminder_minutes_before, t.completed, t.created_at, t.updated_at, ARRAY(SELECT link.tag_id FROM task_tags link JOIN tags tag ON tag.id=link.tag_id AND tag.owner_id=link.owner_id AND tag.deleted_at IS NULL WHERE link.task_id=t.id AND link.owner_id=t.owner_id ORDER BY link.tag_id) AS tag_ids FROM tasks t WHERE " + where + " ORDER BY " + order + ", t.id"
+	query := "-- selectTasks\nSELECT t.is_project, t.id, t.owner_id, t.title, t.description, t.list_id, t.parent_id, t.deadline_date, t.deadline_at, t.planned_at, t.duration_minutes, t.reminder_mode, t.reminder_minutes_before, t.completed, t.created_at, t.updated_at, ARRAY(SELECT link.tag_id FROM task_tags link JOIN tags tag ON tag.id=link.tag_id AND tag.owner_id=link.owner_id AND tag.deleted_at IS NULL WHERE link.task_id=t.id AND link.owner_id=t.owner_id ORDER BY link.tag_id) AS tag_ids FROM tasks t WHERE " + where + " ORDER BY " + order + ", t.id"
 	if filters.Limit != nil {
 		query += " LIMIT @limit"
 		args["limit"] = filters.Limit
@@ -92,10 +92,12 @@ func countQuery(filters models.GetTasksFilters) (string, pgx.NamedArgs) {
 const createQuery = `-- createTask
 INSERT INTO
   tasks AS t (
+    id,
     owner_id,
     title,
     description,
     list_id,
+    is_project,
     parent_id,
     deadline_date,
     deadline_at,
@@ -106,10 +108,12 @@ INSERT INTO
   )
 VALUES
   (
+    COALESCE(@id::uuid, gen_random_uuid()),
     @owner_id,
     @title,
     @description,
     @list_id,
+    @is_project,
     @parent_id,
     @deadline_date::text::date,
     @deadline_at,
@@ -119,6 +123,7 @@ VALUES
     @reminder_minutes_before
   )
 RETURNING
+  t.is_project,
   t.id,
   t.owner_id,
   t.title,
@@ -160,6 +165,7 @@ SET
     WHEN @clear_list_id THEN NULL
     ELSE COALESCE(@list_id, t.list_id)
   END,
+  is_project = COALESCE(@is_project, t.is_project),
   parent_id = CASE
     WHEN @clear_parent_id THEN NULL
     ELSE COALESCE(@parent_id, t.parent_id)
@@ -191,6 +197,7 @@ WHERE
   AND t.owner_id = @scope
   AND t.deleted_at IS NULL
 RETURNING
+  t.is_project,
   t.id,
   t.owner_id,
   t.title,
@@ -239,6 +246,7 @@ WHERE
   AND t.owner_id = @scope
   AND t.deleted_at IS NULL
 RETURNING
+  t.is_project,
   t.id,
   t.owner_id,
   t.title,

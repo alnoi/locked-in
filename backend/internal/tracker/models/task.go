@@ -7,6 +7,7 @@ import (
 )
 
 type Task struct {
+	IsProject             bool
 	ID                    uuid.UUID
 	OwnerID               uuid.UUID
 	Title                 string

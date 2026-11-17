@@ -43,6 +43,7 @@ public enum TrackerRules {
       _ = list
     }
     if let parentID = input.parentID {
+      if input.isProject == true { throw TrackerError.conflict("Проект не может быть подзадачей.") }
       if parentID == id { throw TrackerError.conflict("Задача не может быть своим родителем.") }
       guard let parent = snapshot.tasks.first(where: { $0.id == parentID }) else {
         throw TrackerError.notFound
@@ -106,7 +107,7 @@ public enum TrackerRules {
     }
   }
   public static func tasks(in listID: UUID, snapshot: Snapshot) -> [TaskRecord] {
-    snapshot.tasks.filter { $0.listID == listID }
+    snapshot.tasks.filter { TaskProjectGrouping.listID(of: $0, in: snapshot.tasks) == listID }
   }
   public struct Selection: Sendable {
     public var rootID: UUID?
@@ -138,8 +139,9 @@ public enum TrackerRules {
     guard let selection = selection(for: boardID, snapshot: snapshot) else { return [] }
     let listIDs = Set(lists(in: boardID, snapshot: snapshot).map(\.id))
     return snapshot.tasks.filter { task in
-      (selection.rootID == nil && task.listID == nil
-        || task.listID.map { listIDs.contains($0) } == true)
+      let listID = TaskProjectGrouping.listID(of: task, in: snapshot.tasks)
+      return (selection.rootID == nil && listID == nil
+        || listID.map { listIDs.contains($0) } == true)
         && selection.tagIDs.isSubset(of: Set(task.tagIDs))
         && selection.completed.allSatisfy { $0 == task.completed }
     }

@@ -9,6 +9,7 @@ import (
 )
 
 type entity struct {
+	IsProject             bool                `db:"is_project"`
 	ReminderMode          models.ReminderMode `db:"reminder_mode"`
 	ReminderMinutesBefore int                 `db:"reminder_minutes_before"`
 	ID                    uuid.UUID           `db:"id"`

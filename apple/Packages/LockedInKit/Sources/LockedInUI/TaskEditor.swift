@@ -6,6 +6,7 @@ struct TaskEditor: View {
   @Bindable var model: AppModel
   let presentation: TaskPresentation
   private let close: (() -> Void)?
+  private let saveOnOutside: Bool
   @Environment(\.dismiss) private var presentationDismiss
   @Environment(\.openURL) private var openURL
   @State private var reminderMode: ReminderMode
@@ -13,9 +14,15 @@ struct TaskEditor: View {
   @State private var reminderHint: String?
   @State private var requestingPermission = false
   @State private var showPermissionSettings = false
+  @State private var links: TaskLinks
+  @State private var urlDraft = ""
+  @State private var urlFocusRequest = 0
+  @State private var noteSaving = false
+  @State private var savedInput: TaskInput
   @State private var input: TaskInput
   @State private var hasDeadline: Bool
   @State private var hasDeadlineTime: Bool
+  @State private var showDeadlineTime = false
   @State private var deadline: Date
   @State private var hasPlan: Bool
   @State private var planned: Date
@@ -23,20 +30,23 @@ struct TaskEditor: View {
   @State private var duration: Int
   @State private var errorMessage: String?
   @State private var confirmDelete = false
+  @State private var saving = false
   @State private var comment = ""
   @State private var editingCommentID: UUID?
   @State private var child: TaskPresentation?
   @FocusState private var titleFocused: Bool
-  init(model: AppModel, presentation: TaskPresentation, close: (() -> Void)? = nil) {
+  init(model: AppModel, presentation: TaskPresentation, saveOnOutside: Bool = false, close: (() -> Void)? = nil) {
     self.model = model
     self.presentation = presentation
     self.close = close
+    self.saveOnOutside = saveOnOutside
     _reminderMode = State(initialValue: presentation.input.reminderMode ?? .none)
     _reminderMinutesBefore = State(initialValue: presentation.input.reminderMinutesBefore ?? 0)
     _input = State(initialValue: presentation.input)
+    _savedInput = State(initialValue: presentation.input)
+    _links = State(initialValue: TaskLinks(stored: presentation.input.description))
     _hasDeadline = State(
-      initialValue: presentation.input.deadlineAt != nil || presentation.input.deadlineDate != nil
-        || presentation.taskID == nil)
+      initialValue: presentation.input.deadlineAt != nil || presentation.input.deadlineDate != nil)
     _hasDeadlineTime = State(initialValue: presentation.input.deadlineAt != nil)
     _deadline = State(
       initialValue: presentation.input.deadlineAt ?? presentation.input.deadlineDate.flatMap(
@@ -48,56 +58,21 @@ struct TaskEditor: View {
   }
   var body: some View {
     VStack(spacing: 0) {
+      ScrollViewReader { proxy in
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
+          if let id = presentation.taskID, model.visibleUnsyncedTaskIDs.contains(id) {
+            Label("Сохранено на устройстве · ожидает синхронизации", systemImage: "flag.fill")
+              .font(.caption).foregroundStyle(.red).padding(.horizontal, 12)
+          }
           inspectorGroup {
             TextField("Название задачи", text: $input.title, axis: .vertical)
               .font(.system(size: 23, weight: .semibold, design: .rounded)).lineLimit(1...4)
               .textFieldStyle(.plain).focused($titleFocused).accessibilityIdentifier("task-title")
+              .submitLabel(.done).onSubmit { Task { await save() } }
               .padding(14)
-            groupDivider
-            TextField(
-              "Заметки и URL",
-              text: Binding(
-                get: { input.description ?? "" }, set: { input.description = $0.isEmpty ? nil : $0 }
-              ), axis: .vertical
-            )
-            .textFieldStyle(.plain).foregroundStyle(.secondary).lineLimit(1...5).padding(14)
           }
-          inspectorSection("Дата и время") {
-            inspectorRow("Дата", symbol: "calendar") {
-              Toggle("Дата", isOn: $hasDeadline).labelsHidden().toggleStyle(.switch).controlSize(
-                .small)
-            }
-            if hasDeadline {
-              DatePicker("Дата дедлайна", selection: $deadline, displayedComponents: [.date])
-                .datePickerStyle(.compact).labelsHidden().padding(.horizontal, 14).padding(
-                  .bottom, 10)
-              Text(deadline.formatted(.dateTime.day().month(.wide).year())).font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 14).padding(.bottom, 10)
-            }
-            groupDivider
-            inspectorRow("Время", symbol: "clock") {
-              Toggle(
-                "Время",
-                isOn: Binding(
-                  get: { hasDeadlineTime },
-                  set: {
-                    hasDeadlineTime = $0
-                    if $0 { hasDeadline = true }
-                  })
-              )
-              .labelsHidden().toggleStyle(.switch).controlSize(.small)
-            }
-            if hasDeadlineTime {
-              timePicker("Время дедлайна", selection: $deadline).padding(.horizontal, 14).padding(
-                .bottom, 10)
-            }
-            groupDivider
-            inspectorRow("Напоминание", symbol: reminderMode.symbol) { reminderControls }
-            reminderFeedback.padding(.horizontal, 14)
-          }
+          if let taskID = presentation.taskID { comments(taskID) }
           inspectorSection("Организация") {
             inspectorRow("Список", symbol: "list.bullet") {
               Picker("Список", selection: $input.listID) {
@@ -160,6 +135,7 @@ struct TaskEditor: View {
             inspectorRow("Длительность", symbol: "hourglass") {
               if hasDuration {
                 TextField("Минут", value: $duration, format: .number).textFieldStyle(.plain)
+                  .onSubmit { Task { await save() } }
                   .multilineTextAlignment(.trailing).frame(width: 45)
                 Text("мин").foregroundStyle(.secondary)
               }
@@ -167,14 +143,28 @@ struct TaskEditor: View {
                 .controlSize(.small)
             }
           }
-          if let taskID = presentation.taskID {
-            subtasks(taskID)
-            comments(taskID)
+          inspectorSection("Дедлайн") {
+            inspectorRow("Дедлайн", symbol: "calendar") {
+              Toggle("Дедлайн", isOn: $hasDeadline).labelsHidden().toggleStyle(.switch).controlSize(.small)
+            }
+            if hasDeadline { deadlineFields.padding(.horizontal, 14).padding(.bottom, 10) }
+            groupDivider
+            inspectorRow("Напоминание", symbol: reminderMode.symbol) { reminderControls }
+            reminderFeedback.padding(.horizontal, 14)
+          }
+          if let taskID = presentation.taskID { subtasks(taskID) }
+          inspectorSection("Ссылки") {
+            TaskLinksField(links: $links, draft: $urlDraft, focusRequest: urlFocusRequest, onSave: persistLinks)
+          }.id("task-links")
+          if presentation.taskID != nil {
             Button("Удалить задачу", role: .destructive) { confirmDelete = true }
               .buttonStyle(.plain).font(.subheadline).padding(.horizontal, 12)
           }
           EditorFooter(message: errorMessage)
         }.padding(12)
+      }.onChange(of: urlFocusRequest) { _, _ in
+        withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo("task-links", anchor: .center) }
+      }
       }
       Divider().opacity(0.5)
       HStack {
@@ -185,7 +175,7 @@ struct TaskEditor: View {
         Button(isCreating ? "Создать" : "Сохранить") { Task { await save() } }
           .buttonStyle(.borderedProminent).controlSize(.small)
           .disabled(
-            !model.canEdit || requestingPermission
+            !model.canEdit || requestingPermission || saving
               || input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
           )
           .keyboardShortcut(.return, modifiers: .command)
@@ -211,6 +201,27 @@ struct TaskEditor: View {
     #else
       .presentationDetents([.large]).presentationDragIndicator(.visible)
     #endif
+    .background {
+      AppShortcutHandler(priority: 100, enabled: child == nil && !confirmDelete && !requestingPermission,
+        focusOnAppear: !isCreating, submitDatePickerOnReturn: true, handle: handleShortcut).allowsHitTesting(false)
+    }
+    .background {
+      QuickTaskOutsideClick(enabled: (isCreating || saveOnOutside) && !saving && !requestingPermission && !confirmDelete && child == nil,
+        includeSheetParent: true, outside: finishOutside).allowsHitTesting(false)
+    }
+  }
+  private func finishOutside() {
+    guard !saving, !requestingPermission, !confirmDelete, child == nil else { return }
+    if isCreating { finishCreation() }
+    else if saveOnOutside { Task { await save(onlyIfChanged: true) } }
+  }
+  private func finishCreation() {
+    guard isCreating, !saving, !requestingPermission, child == nil else { return }
+    if input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      dismissEditor()
+    } else {
+      Task { await save() }
+    }
   }
   private func dismissEditor() {
     if let close { close() } else { presentationDismiss() }
@@ -304,6 +315,42 @@ struct TaskEditor: View {
       }
     }.font(.caption)
   }
+  private var deadlineFields: some View {
+    HStack(spacing: 8) {
+      DatePicker("Дата дедлайна", selection: $deadline, displayedComponents: [.date])
+        .datePickerStyle(.compact).labelsHidden().fixedSize()
+      Spacer(minLength: 0)
+      #if os(iOS)
+      Button {
+        hasDeadlineTime = true
+        showDeadlineTime = true
+      } label: {
+        Text(hasDeadlineTime ? deadline.formatted(date: .omitted, time: .shortened) : "Добавить время")
+          .font(.caption)
+      }.popover(isPresented: $showDeadlineTime) {
+        VStack(spacing: 12) {
+          timePicker("Время дедлайна", selection: $deadline)
+          HStack {
+            Button("Без времени") { hasDeadlineTime = false; showDeadlineTime = false }
+            Spacer()
+            Button("Готово") { showDeadlineTime = false }
+          }
+        }.padding().frame(width: 280).presentationCompactAdaptation(.popover)
+      }
+      #else
+      if hasDeadlineTime {
+        DatePicker("Время дедлайна", selection: $deadline, displayedComponents: [.hourAndMinute])
+          .datePickerStyle(.compact).labelsHidden().fixedSize()
+        Button { hasDeadlineTime = false } label: {
+          Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+        }.buttonStyle(.plain).help("Убрать время дедлайна").accessibilityLabel("Убрать время дедлайна")
+      } else {
+        Button("Добавить время") { hasDeadlineTime = true }.buttonStyle(.plain)
+          .font(.caption).foregroundStyle(Color.accent)
+      }
+      #endif
+    }
+  }
   private var planningFields: some View {
     VStack(alignment: .leading, spacing: 12) {
       DatePicker("Дата", selection: $planned, displayedComponents: [.date])
@@ -322,7 +369,16 @@ struct TaskEditor: View {
   private var hasChildren: Bool {
     presentation.taskID.map { id in model.snapshot.tasks.contains { $0.parentID == id } } ?? false
   }
-  private func save() async {
+  private func persistLinks(_ updated: TaskLinks) async throws {
+    guard let id = presentation.taskID else { return }
+    guard let task = model.snapshot.tasks.first(where: { $0.id == id }) else { throw TrackerError.notFound }
+    var value = TaskInput(task)
+    value.description = try updated.stored()
+    try await model.mutate(.task(id, value))
+    input.description = value.description
+    savedInput.description = value.description
+  }
+  private func taskValue() throws -> TaskInput {
     var value = input
     value.title = value.title.trimmingCharacters(in: .whitespacesAndNewlines)
     value.plannedAt = hasPlan ? planned : nil
@@ -331,7 +387,13 @@ struct TaskEditor: View {
     value.deadlineAt = hasDeadline && hasDeadlineTime ? deadline : nil
     value.reminderMode = reminderMode
     value.reminderMinutesBefore = reminderMinutesBefore
-    do {
+    value.description = try links.stored(adding: urlDraft)
+    return value
+  }
+  private func persistTask(onlyIfChanged: Bool) async throws {
+    let value = try taskValue()
+    let changed = try TaskEditorChanges.hasChanges(value, from: savedInput)
+    if !onlyIfChanged || isCreating || changed {
       try TrackerRules.validate(value, id: presentation.taskID, in: model.snapshot)
       if reminderMode != .none,
         let fireDate = TaskReminder.fireDate(
@@ -355,8 +417,111 @@ struct TaskEditor: View {
         permissionWarning = model.friendly(error)
       }
       try await model.mutate(.task(presentation.taskID, value))
+      savedInput = value
       if let permissionWarning { model.reminderWarning = permissionWarning }
+    }
+    if onlyIfChanged, let id = presentation.taskID,
+      !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      try await model.mutate(.comment(editingCommentID, taskID: id,
+        text: comment.trimmingCharacters(in: .whitespacesAndNewlines)))
+      comment = ""
+      editingCommentID = nil
+    }
+  }
+  private func save(onlyIfChanged: Bool = false) async {
+    guard !saving else { return }
+    saving = true
+    defer { saving = false }
+    do {
+      try await persistTask(onlyIfChanged: onlyIfChanged)
       dismissEditor()
+    } catch { errorMessage = error.localizedDescription }
+  }
+  private func handleShortcut(_ shortcut: AppShortcut) -> Bool {
+    switch shortcut {
+    case .submit:
+      guard !input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return true }
+      Task { await save() }
+    case .close:
+      if !saving && !noteSaving { dismissEditor() }
+    case .links:
+      urlFocusRequest += 1
+    case .sidebar:
+      NotificationCenter.default.post(name: .appShortcut, object: shortcut)
+    case .search, .newInboxTask, .previousSection:
+      Task { await forwardShortcut(shortcut) }
+    case .unplan:
+      if presentation.taskID == nil {
+        hasPlan = false
+        input.plannedAt = nil
+      } else { Task { await taskAction(shortcut) } }
+    case .complete, .delete, .project:
+      if presentation.taskID != nil { Task { await taskAction(shortcut) } }
+    default: return false
+    }
+    return true
+  }
+  private func forwardShortcut(_ shortcut: AppShortcut) async {
+    guard !saving else { return }
+    saving = true
+    defer { saving = false }
+    do {
+      if !isCreating || !input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        try await persistTask(onlyIfChanged: true)
+      }
+      dismissEditor()
+      DispatchQueue.main.async { NotificationCenter.default.post(name: .appShortcut, object: shortcut) }
+    } catch { errorMessage = error.localizedDescription }
+  }
+  private func taskAction(_ action: AppShortcut) async {
+    guard !saving, model.canEdit, let id = presentation.taskID else { return }
+    saving = true
+    defer { saving = false }
+    do {
+      switch action {
+      case .complete:
+        try await persistTask(onlyIfChanged: true)
+        try await model.mutate(.completed(id, true))
+        dismissEditor()
+      case .delete:
+        for task in model.snapshot.tasks.filter({ $0.parentID == id }) {
+          try await model.mutate(.deleteTask(task.id))
+        }
+        try await model.mutate(.deleteTask(id))
+        dismissEditor()
+      case .unplan:
+        guard let task = model.snapshot.tasks.first(where: { $0.id == id }) else { throw TrackerError.notFound }
+        if task.plannedAt != nil {
+          try await model.mutate(.task(id, CalendarTaskNavigation.unschedule(task)))
+        }
+        hasPlan = false
+        input.plannedAt = nil
+        savedInput.plannedAt = nil
+      case .project:
+        guard input.parentID == nil else { return }
+        let isProject = input.isProject == true || model.snapshot.tasks.contains { $0.parentID == id }
+        if isProject {
+          try await persistTask(onlyIfChanged: true)
+          try await model.dissolveProjectAndWait(id)
+          input.isProject = false
+          savedInput.isProject = false
+        } else {
+          input.isProject = true
+          try await persistTask(onlyIfChanged: true)
+        }
+      default: break
+      }
+    } catch { errorMessage = error.localizedDescription }
+  }
+  private func saveNote(_ id: UUID) async {
+    let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !noteSaving, !text.isEmpty, model.canEditCollections else { return }
+    noteSaving = true
+    defer { noteSaving = false }
+    do {
+      try await model.mutate(.comment(editingCommentID, taskID: id, text: text))
+      comment = ""
+      editingCommentID = nil
     } catch { errorMessage = error.localizedDescription }
   }
   @ViewBuilder private func subtasks(_ id: UUID) -> some View {
@@ -386,12 +551,21 @@ struct TaskEditor: View {
     }
   }
   private func comments(_ id: UUID) -> some View {
-    inspectorSection("Комментарии") {
+    inspectorSection("Заметки") {
+      if let note = links.legacyNote {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("Сохранённая заметка").font(.caption).foregroundStyle(.secondary)
+          Text(WebLinks.attributed(note)).tint(Color.accent).textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+        }.padding(12)
+      }
       ForEach(
         model.snapshot.comments.filter { $0.taskID == id }.sorted { $0.createdAt < $1.createdAt }
       ) { item in
         VStack(alignment: .leading, spacing: 8) {
-          Text(item.text).textSelection(.enabled)
+          Text(WebLinks.attributed(item.text)).tint(Color.accent)
+            .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
           HStack {
             Text(item.createdAt.formatted(.dateTime.day().month().hour().minute())).font(.caption)
               .foregroundStyle(.secondary)
@@ -403,11 +577,14 @@ struct TaskEditor: View {
             Button("Удалить", role: .destructive) { model.perform(.deleteComment(item.id)) }.font(
               .caption
             ).buttonStyle(.plain)
-          }.disabled(!model.canEdit)
+          }.disabled(!model.canEditCollections)
         }.padding(12)
       }
-      TextField("Написать комментарий…", text: $comment, axis: .vertical).lineLimit(2...5)
-        .textFieldStyle(.plain).padding(12)
+      TextField("Написать заметку…", text: $comment, axis: .vertical).lineLimit(1...5)
+        .textFieldStyle(.plain).fixedSize(horizontal: false, vertical: true)
+        .submitLabel(.done).onSubmit { Task { await saveNote(id) } }.submitScope()
+        .padding(.horizontal, 12).padding(.vertical, 8)
+      if editingCommentID != nil || !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       HStack {
         if editingCommentID != nil {
           Button("Отменить правку") {
@@ -416,20 +593,12 @@ struct TaskEditor: View {
           }
         }
         Spacer()
-        Button(editingCommentID == nil ? "Отправить" : "Сохранить комментарий") {
-          Task {
-            do {
-              try await model.mutate(
-                .comment(
-                  editingCommentID, taskID: id,
-                  text: comment.trimmingCharacters(in: .whitespacesAndNewlines)))
-              comment = ""
-              editingCommentID = nil
-            } catch { errorMessage = error.localizedDescription }
-          }
+        Button(editingCommentID == nil ? "Добавить заметку" : "Сохранить заметку") {
+          Task { await saveNote(id) }
         }.disabled(
-          !model.canEdit || comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-      }.padding(12)
+          !model.canEditCollections || noteSaving || comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      }.font(.caption).controlSize(.small).padding(.horizontal, 12).padding(.bottom, 8)
+      }
     }
   }
 }

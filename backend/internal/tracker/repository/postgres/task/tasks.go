@@ -40,11 +40,11 @@ func (r *Repository) GetTasksCount(ctx context.Context, filters models.GetTasksF
 	return value, nil
 }
 func (r *Repository) CreateTask(ctx context.Context, in *models.CreateTaskIn) (models.Task, error) {
-	args := pgx.NamedArgs{"owner_id": in.OwnerID, "title": in.Title, "description": in.Description, "list_id": in.ListID, "parent_id": in.ParentID, "deadline_date": in.DeadlineDate, "deadline_at": in.DeadlineAt, "planned_at": in.PlannedAt, "reminder_mode": in.ReminderMode, "reminder_minutes_before": in.ReminderMinutesBefore, "duration_minutes": in.DurationMinutes}
+	args := pgx.NamedArgs{"is_project": in.IsProject, "id": in.ID, "owner_id": in.OwnerID, "title": in.Title, "description": in.Description, "list_id": in.ListID, "parent_id": in.ParentID, "deadline_date": in.DeadlineDate, "deadline_at": in.DeadlineAt, "planned_at": in.PlannedAt, "reminder_mode": in.ReminderMode, "reminder_minutes_before": in.ReminderMinutesBefore, "duration_minutes": in.DurationMinutes}
 	return r.write(ctx, createQuery, args)
 }
 func (r *Repository) UpdateTask(ctx context.Context, scope *uuid.UUID, in *models.UpdateTaskIn) (models.Task, error) {
-	args := pgx.NamedArgs{"id": in.ID, "scope": scope, "title": in.Title, "description": in.Description, "list_id": in.ListID, "parent_id": in.ParentID, "deadline_date": in.DeadlineDate, "deadline_at": in.DeadlineAt, "planned_at": in.PlannedAt, "reminder_mode": in.ReminderMode, "reminder_minutes_before": in.ReminderMinutesBefore, "duration_minutes": in.DurationMinutes, "clear_description": in.ClearDescription, "clear_list_id": in.ClearListID, "clear_parent_id": in.ClearParentID, "clear_deadline_date": in.ClearDeadlineDate, "clear_deadline_at": in.ClearDeadlineAt, "clear_planned_at": in.ClearPlannedAt, "clear_duration_minutes": in.ClearDurationMinutes}
+	args := pgx.NamedArgs{"is_project": in.IsProject, "id": in.ID, "scope": scope, "title": in.Title, "description": in.Description, "list_id": in.ListID, "parent_id": in.ParentID, "deadline_date": in.DeadlineDate, "deadline_at": in.DeadlineAt, "planned_at": in.PlannedAt, "reminder_mode": in.ReminderMode, "reminder_minutes_before": in.ReminderMinutesBefore, "duration_minutes": in.DurationMinutes, "clear_description": in.ClearDescription, "clear_list_id": in.ClearListID, "clear_parent_id": in.ClearParentID, "clear_deadline_date": in.ClearDeadlineDate, "clear_deadline_at": in.ClearDeadlineAt, "clear_planned_at": in.ClearPlannedAt, "clear_duration_minutes": in.ClearDurationMinutes}
 	return r.write(ctx, updateQuery, args)
 }
 func (r *Repository) SoftDeleteTask(ctx context.Context, filters models.DeleteTaskFilters) (int64, error) {

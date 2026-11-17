@@ -6,6 +6,9 @@ import (
 )
 
 func ApplyTaskUpdate(value models.Task, in *models.UpdateTaskIn) (models.Task, error) {
+	if in.IsProject != nil {
+		value.IsProject = *in.IsProject
+	}
 	if in.Title != nil {
 		value.Title = *in.Title
 	}

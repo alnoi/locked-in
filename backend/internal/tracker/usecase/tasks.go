@@ -56,7 +56,17 @@ func (u *UseCase) CreateTask(ctx context.Context, scope *uuid.UUID, in *models.C
 	var result models.Task
 	err := u.mutate(ctx, scope, func(ctx context.Context) error {
 		in.OwnerID = *scope
-		value := models.Task{Title: in.Title, Description: in.Description, ListID: in.ListID, ParentID: in.ParentID, DeadlineDate: in.DeadlineDate, DeadlineAt: in.DeadlineAt, PlannedAt: in.PlannedAt, DurationMinutes: in.DurationMinutes, ReminderMode: in.ReminderMode, ReminderMinutesBefore: in.ReminderMinutesBefore, TagIDs: in.TagIDs}
+		if in.ID != nil {
+			existing, err := u.dependencies.Tasks.GetTasks(ctx, models.GetTasksFilters{ID: in.ID, Scope: scope})
+			if err != nil {
+				return err
+			}
+			if len(existing) > 0 {
+				result = existing[0]
+				return nil
+			}
+		}
+		value := models.Task{IsProject: in.IsProject, Title: in.Title, Description: in.Description, ListID: in.ListID, ParentID: in.ParentID, DeadlineDate: in.DeadlineDate, DeadlineAt: in.DeadlineAt, PlannedAt: in.PlannedAt, DurationMinutes: in.DurationMinutes, ReminderMode: in.ReminderMode, ReminderMinutesBefore: in.ReminderMinutesBefore, TagIDs: in.TagIDs}
 		if err := u.validateTask(ctx, scope, value); err != nil {
 			return err
 		}

@@ -7,6 +7,8 @@ import (
 )
 
 type CreateTaskIn struct {
+	IsProject             bool
+	ID                    *uuid.UUID
 	OwnerID               uuid.UUID
 	Title                 string
 	Description           *string
@@ -21,6 +23,7 @@ type CreateTaskIn struct {
 	TagIDs                []uuid.UUID
 }
 type UpdateTaskIn struct {
+	IsProject             *bool
 	ID                    uuid.UUID
 	Title                 *string
 	Description           *string

@@ -7,6 +7,7 @@ struct ListEditor: View {
     @State private var input: ListInput
     @State private var message: String?
     @State private var confirmDelete = false
+    @State private var saving = false
     @Environment(\.dismiss) private var dismiss
     init(model: AppModel, presentation: ListPresentation) {
         self.model = model
@@ -28,14 +29,14 @@ struct ListEditor: View {
                     Section { Button("Удалить список", role: .destructive) { confirmDelete = true } }
                 }
                 EditorFooter(message: message)
-            }.formStyle(.grouped).navigationTitle(presentation.listID == nil ? "Новый список" : "Настройки списка")
+            }.onSubmit { Task { await save() } }.formStyle(.grouped).navigationTitle(presentation.listID == nil ? "Новый список" : "Настройки списка")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Отмена") { dismiss() }.disabled(model.isMutating)
+                        Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction).disabled(model.isMutating)
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Сохранить") { Task { await save() } }.disabled(
-                            !model.canEdit || input.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        Button("Сохранить") { Task { await save() } }.keyboardShortcut(.defaultAction).disabled(
+                            !model.canEditCollections || saving || input.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }.confirmationDialog("Удалить список?", isPresented: $confirmDelete, titleVisibility: .visible) {
                     Button("Удалить", role: .destructive) {
@@ -48,6 +49,8 @@ struct ListEditor: View {
                             }
                         }
                     }
+                } message: {
+                    Text("Все задачи списка будут перемещены во «Входящие».")
                 }
         }.onAppear { if input.boardID == nil { input.boardID = model.snapshot.generalBoard?.id } }
             .interactiveDismissDisabled()
@@ -56,6 +59,9 @@ struct ListEditor: View {
             #endif
     }
     private func save() async {
+        guard !saving else { return }
+        saving = true
+        defer { saving = false }
         var value = input
         value.name = value.name.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.boardID == nil { value.boardID = model.snapshot.generalBoard?.id }

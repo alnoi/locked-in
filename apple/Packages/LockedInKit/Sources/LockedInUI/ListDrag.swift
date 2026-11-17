@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 @MainActor @Observable
 final class BoardReorderSession {
   private(set) var source: UUID?
+  private(set) var hoveredListID: UUID?
   private(set) var order: [UUID] = []
   enum Kind { case list, task }
   private let kind: Kind
@@ -14,15 +15,61 @@ final class BoardReorderSession {
   private var pendingHover: Task<Void, Never>?
   private var hoverTarget: UUID?
   private var finishing = false
+  var projectTarget: UUID?
+  struct Placement: Equatable {
+    var parentID: UUID?
+    var listID: UUID?
+    var target: UUID
+    var after: Bool
+  }
+  private(set) var placement: Placement?
+  private var pendingPlacement: Placement?
+  func preview(_ value: Placement) {
+    guard !finishing, let source, value.target != source || value.parentID == nil else { return }
+    guard pendingPlacement != value else { return }
+    cancelHover()
+    pendingPlacement = value
+    let current = token
+    pendingHover = Task { @MainActor [weak self] in
+      do { try await Task.sleep(for: .milliseconds(90)) } catch { return }
+      guard let self, self.token == current, !Task.isCancelled else { return }
+      withAnimation(.snappy(duration: 0.12, extraBounce: 0)) {
+        self.placement = value
+        self.order.removeAll { $0 == source }
+        if let index = self.order.firstIndex(of: value.target) {
+          self.order.insert(source, at: index + (value.after ? 1 : 0))
+        } else { self.order.append(source) }
+      }
+    }
+  }
+  func hoverList(_ listID: UUID?) {
+    guard kind == .task, source != nil, !finishing else { return }
+    hoveredListID = listID ?? ListOrdering.inboxID
+  }
+  func previewEnd(listID: UUID?, visibleTasks: [TaskRecord], allTasks: [TaskRecord]) {
+    guard let source else { return }
+    let positions = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($0.element, $0.offset) })
+    let roots = TaskProjectGrouping.roots(visible: visibleTasks, all: allTasks).filter { $0.id != source }
+    let lastRoot = roots.max { positions[$0.id, default: -1] < positions[$1.id, default: -1] }
+    let members = lastRoot.map { root in
+      allTasks.filter { $0.id != source && ($0.id == root.id || $0.parentID == root.id) }
+    } ?? []
+    let target = members.max { positions[$0.id, default: -1] < positions[$1.id, default: -1] }?.id ?? source
+    preview(.init(parentID: nil, listID: listID, target: target, after: true))
+  }
   func cancelHover(_ target: UUID? = nil) {
     guard target == nil || hoverTarget == target else { return }
     pendingHover?.cancel()
     pendingHover = nil
     hoverTarget = nil
+    projectTarget = nil
+    pendingPlacement = nil
   }
   func begin(_ id: UUID, order: [UUID]) -> NSItemProvider {
     cancelHover()
     finishing = false
+    placement = nil
+    hoveredListID = nil
     let token = UUID()
     self.token = token
     source = id
@@ -46,10 +93,10 @@ final class BoardReorderSession {
     hoverTarget = target
     let current = token
     pendingHover = Task { @MainActor [weak self] in
-      do { try await Task.sleep(for: .milliseconds(260)) } catch { return }
+      do { try await Task.sleep(for: .milliseconds(90)) } catch { return }
       guard let self, !Task.isCancelled, self.token == current,
         self.hoverTarget == target, !self.finishing else { return }
-      withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+      withAnimation(.snappy(duration: 0.12, extraBounce: 0)) {
         self.order = ListOrdering.preview(moving: source, over: target, ids: self.order)
       }
     }
@@ -65,11 +112,13 @@ final class BoardReorderSession {
     cancelHover()
     finishing = false
     let clear = {
+      self.placement = nil
       self.source = nil
+      self.hoveredListID = nil
       self.order = []
       self.token = nil
     }
-    if animated { withAnimation(.spring(response: 0.3, dampingFraction: 0.85), clear) }
+    if animated { withAnimation(.snappy(duration: 0.12, extraBounce: 0), clear) }
     else {
       var transaction = Transaction()
       transaction.disablesAnimations = true
@@ -86,6 +135,7 @@ final class ListDragProvider: NSItemProvider, @unchecked Sendable {
     super.init()
     registerObject(text as NSString, visibility: .ownProcess)
   }
+  func finish() { ended() }
   deinit { ended() }
 }
 struct WholeListDraggable: ViewModifier {
@@ -104,6 +154,7 @@ struct WholeListDraggable: ViewModifier {
 struct BoardDropDelegate: DropDelegate {
   var enabled: Bool
   var hover: () -> Void = {}
+  var hoverAt: (CGPoint) -> Void = { _ in }
   var unhover: () -> Void = {}
   var localDrop: () -> Bool = { false }
   var accept: @MainActor (BoardDragPayload) -> Void
@@ -112,12 +163,13 @@ struct BoardDropDelegate: DropDelegate {
     enabled && info.hasItemsConforming(to: [UTType.text.identifier])
   }
   func dropEntered(info: DropInfo) {
-    if enabled { hover() }
+    if enabled { hover(); hoverAt(info.location) }
   }
   func dropExited(info: DropInfo) { unhover() }
   func dropUpdated(info: DropInfo) -> DropProposal? {
     guard enabled else { return nil }
     hover()
+    hoverAt(info.location)
     return DropProposal(operation: .move)
   }
   func performDrop(info: DropInfo) -> Bool {
@@ -142,36 +194,87 @@ struct BoardDropDelegate: DropDelegate {
   }
 }
 
-struct TaskReorderDropDelegate: DropDelegate {
-  let target: UUID
+/// One placement model for siblings, project children and extraction back into a list.
+struct TaskPlacementDropDelegate: DropDelegate {
+  let model: AppModel
+  let target: TaskRecord
+  let height: CGFloat
+  let projectHeader: Bool
   let session: BoardReorderSession
-  var commit: ([UUID]) -> Void
-  var listDrop: BoardDropDelegate? = nil
-  private var reordersTask: Bool { session.source != nil && session.order.contains(target) }
+  var listDrop: BoardDropDelegate?
+
+  private func placement(_ info: DropInfo) -> BoardReorderSession.Placement? {
+    guard let source = session.source, source != target.id,
+      model.snapshot.tasks.contains(where: { $0.id == source }) else { return nil }
+    let hasChildren = model.snapshot.tasks.contains { $0.parentID == source || ($0.id == source && $0.isProject == true) }
+    let intoProject = projectHeader && info.location.y > 12
+    let parent = intoProject ? target.id : target.parentID
+    guard parent != source, !(hasChildren && parent != nil) else { return nil }
+    return .init(parentID: parent,
+      listID: TaskProjectGrouping.listID(of: target, in: model.snapshot.tasks),
+      target: target.id, after: intoProject || info.location.y > height / 2)
+  }
   func validateDrop(info: DropInfo) -> Bool {
-    if reordersTask { return info.hasItemsConforming(to: [UTType.text.identifier]) }
+    if session.source != nil { return placement(info) != nil || session.source == target.id }
     return listDrop?.validateDrop(info: info) ?? false
   }
-  func dropEntered(info: DropInfo) {
-    if reordersTask { session.hover(target) }
-    else { listDrop?.dropEntered(info: info) }
+  func dropEntered(info: DropInfo) { update(info) }
+  func dropUpdated(info: DropInfo) -> DropProposal? {
+    update(info)
+    return validateDrop(info: info) ? DropProposal(operation: .move) : nil
+  }
+  private func update(_ info: DropInfo) {
+    session.hoverList(TaskProjectGrouping.listID(of: target, in: model.snapshot.tasks))
+    if let value = placement(info) { session.preview(value) }
+    else if session.source == nil { listDrop?.dropEntered(info: info) }
   }
   func dropExited(info: DropInfo) {
-    if reordersTask { session.cancelHover(target) }
-    else { listDrop?.dropExited(info: info) }
-  }
-  func dropUpdated(info: DropInfo) -> DropProposal? {
-    if reordersTask {
-      session.hover(target)
-      return DropProposal(operation: .move)
-    }
-    return listDrop?.dropUpdated(info: info)
+    session.cancelHover()
+    if session.source == nil { listDrop?.dropExited(info: info) }
   }
   func performDrop(info: DropInfo) -> Bool {
-    guard validateDrop(info: info) else { return false }
-    if !reordersTask { return listDrop?.performDrop(info: info) ?? false }
-    commit(session.order)
+    guard let source = session.source else { return listDrop?.performDrop(info: info) ?? false }
+    // Dropping on the displaced source keeps the preview's destination.
+    guard let value = session.placement ?? placement(info),
+      let task = model.snapshot.tasks.first(where: { $0.id == source }) else { return false }
+    var order = session.order.filter { $0 != source }
+    if let index = order.firstIndex(of: value.target) {
+      order.insert(source, at: index + (value.after ? 1 : 0))
+    } else { order.append(source) }
+    model.saveTaskOrder(order)
+    if task.parentID != value.parentID || task.listID != value.listID {
+      var input = TaskInput(task)
+      input.parentID = value.parentID
+      input.listID = value.listID
+      if value.parentID == nil && model.snapshot.tasks.contains(where: { $0.parentID == source }) {
+        model.move(source, to: value.listID)
+      } else {
+        model.perform(.task(task.id, input))
+      }
+    }
     session.finishDrop()
     return true
+  }
+}
+
+struct TaskPlacementTarget: ViewModifier {
+  let model: AppModel
+  let target: TaskRecord
+  var projectHeader = false
+  let session: BoardReorderSession
+  var listDrop: BoardDropDelegate?
+  var enabled = true
+  @State private var height: CGFloat = 44
+  @ViewBuilder func body(content: Content) -> some View {
+    if enabled {
+    content.background {
+      GeometryReader { geometry in
+        Color.clear.onAppear { height = geometry.size.height }
+          .onChange(of: geometry.size.height) { _, value in height = value }
+      }
+    }.onDrop(of: [UTType.text.identifier], delegate: TaskPlacementDropDelegate(
+      model: model, target: target, height: height, projectHeader: projectHeader,
+      session: session, listDrop: listDrop))
+    } else { content }
   }
 }

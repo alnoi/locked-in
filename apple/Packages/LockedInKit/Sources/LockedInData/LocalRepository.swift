@@ -141,9 +141,6 @@ public actor LocalRepository: TrackerRepository {
       guard let list = snapshot.lists.first(where: { $0.id == id }) else {
         throw TrackerError.notFound
       }
-      if snapshot.tasks.contains(where: { $0.listID == id }) {
-        throw TrackerError.conflict("Сначала перенеси задачи в другой список.")
-      }
       next.deletedLists.append(list)
       result = .deleted(.list, id)
     case .deleteTag(let id):

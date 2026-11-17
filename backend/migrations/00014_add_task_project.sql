@@ -1,0 +1,7 @@
+-- +goose Up
+ALTER TABLE tasks
+ADD COLUMN IF NOT EXISTS is_project BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- +goose Down
+ALTER TABLE tasks
+DROP COLUMN IF EXISTS is_project;

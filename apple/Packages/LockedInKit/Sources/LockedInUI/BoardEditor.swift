@@ -8,6 +8,7 @@ struct BoardEditor: View {
     @State private var completionFilter: Int
     @State private var errorMessage: String?
     @State private var confirmDelete = false
+    @State private var saving = false
     @Environment(\.dismiss) private var dismiss
     init(model: AppModel, presentation: BoardPresentation) {
         self.model = model
@@ -31,7 +32,7 @@ struct BoardEditor: View {
                         Text(
                             input.parentID == nil
                                 ? "Основная доска содержит собственные списки задач."
-                                : "Дочерняя доска наследует списки родителя и фильтрует задачи внутри них.")
+                                : "Дочерняя доска наследует списки и теги родителя. Выбранные ниже теги дополнительно сужают фильтр.")
                     }
                 }
                 if input.parentID != nil {
@@ -52,15 +53,15 @@ struct BoardEditor: View {
                     Section { Button("Удалить доску", role: .destructive) { confirmDelete = true } }
                 }
                 if errorMessage != nil { Section { EditorFooter(message: errorMessage) } }
-            }.formStyle(.grouped)
+            }.onSubmit { Task { await save() } }.formStyle(.grouped)
                 .navigationTitle(presentation.boardID == nil ? "Новая доска" : "Настройки доски")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Отмена") { dismiss() }.disabled(model.isMutating)
+                        Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction).disabled(model.isMutating)
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Сохранить") { Task { await save() } }.disabled(
-                            !model.canEdit || input.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        Button("Сохранить") { Task { await save() } }.keyboardShortcut(.defaultAction).disabled(
+                            !model.canEditCollections || saving || input.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
                 .confirmationDialog("Удалить доску?", isPresented: $confirmDelete, titleVisibility: .visible) {
@@ -81,6 +82,9 @@ struct BoardEditor: View {
             #endif
     }
     private func save() async {
+        guard !saving else { return }
+        saving = true
+        defer { saving = false }
         var value = input
         value.name = value.name.trimmingCharacters(in: .whitespacesAndNewlines)
         value.filterCompleted = value.parentID == nil || completionFilter == -1 ? nil : completionFilter == 1

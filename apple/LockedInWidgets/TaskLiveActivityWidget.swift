@@ -1,12 +1,9 @@
+#if os(iOS)
 import ActivityKit
 import LockedInActivity
 import SwiftUI
 import WidgetKit
 
-@main
-struct LockedInWidgets: WidgetBundle {
-  var body: some Widget { TaskLiveActivityWidget() }
-}
 struct TaskLiveActivityWidget: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: TaskActivityAttributes.self) { context in
@@ -30,7 +27,7 @@ struct TaskLiveActivityWidget: Widget {
     } dynamicIsland: { context in
       DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          Label("Locked In", systemImage: "scope").font(.caption.bold()).foregroundStyle(
+          Label("TrackIt", systemImage: "scope").font(.caption.bold()).foregroundStyle(
             tint(context.state.colorHex))
         }
         DynamicIslandExpandedRegion(.trailing) {
@@ -72,3 +69,5 @@ struct TaskLiveActivityWidget: Widget {
       blue: Double(value & 255) / 255)
   }
 }
+
+#endif

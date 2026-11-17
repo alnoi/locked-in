@@ -1,4 +1,4 @@
-# Locked In backend
+# TrackIt backend
 
 Go 1.27+, Docker; Node.js и golangci-lint нужны для проверок. PostgreSQL. Локальная версия с одним пользователем без регистрации.
 

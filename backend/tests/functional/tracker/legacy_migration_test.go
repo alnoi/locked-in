@@ -62,8 +62,8 @@ INSERT INTO task_tags(owner_id,task_id,tag_id) SELECT task.owner_id,task.id,tag.
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(applied) != 12 {
-				t.Fatalf("applied=%d want 12", len(applied))
+			if len(applied) != 13 {
+				t.Fatalf("applied=%d want 13", len(applied))
 			}
 			settings := f.settings
 			settings.LocalUser.Username = "legacy"

@@ -13,6 +13,7 @@ struct BoardScreen: View {
   var createList: () -> Void
   var editList: (TaskList) -> Void
   var editBoard: () -> Void
+  @State private var taskEndPositions: [UUID: CGFloat] = [:]
   @State private var dragSession = BoardReorderSession()
   @State private var taskDragSession = BoardReorderSession(kind: .task)
   @State private var style: BoardDisplayStyle
@@ -64,7 +65,7 @@ struct BoardScreen: View {
           Button("Изменить фильтр", action: editBoard).font(.caption)
         }.foregroundStyle(.secondary).padding(.horizontal, 20)
       }
-      if style == .columns { columns } else { rows }
+      if style == .columns { columns.environment(\.centeredTaskInspector, false) } else { rows }
     }.onChange(of: boardID) { _, _ in
       dragSession.reset(animated: false)
       taskDragSession.reset(animated: false)
@@ -96,10 +97,6 @@ struct BoardScreen: View {
             .secondary)
         }
         Spacer()
-        Button(action: createList) { Label("Новый список", systemImage: "plus") }.buttonStyle(
-          .bordered
-        )
-        .disabled(!model.canEdit)
       }
       Picker("Представление", selection: $style) {
         ForEach(BoardDisplayStyle.allCases) { Text($0.title).tag($0) }
@@ -114,7 +111,7 @@ struct BoardScreen: View {
           BoardColumn(
             model: model, title: list?.name ?? "Входящие",
             symbol: list == nil ? "tray" : "list.bullet", listID: list?.id,
-            tasks: tasks.filter { $0.listID == list?.id }, open: open, create: { create(list?.id) },
+            tasks: tasks.filter { TaskProjectGrouping.listID(of: $0, in: model.snapshot.tasks) == list?.id }, open: open, create: { create(list?.id) },
             edit: list.map { value in { editList(value) } },
             dragSession: dragSession, taskDragSession: taskDragSession, order: listIDs,
             requiredTags: Array(selection?.tagIDs ?? []),
@@ -127,34 +124,55 @@ struct BoardScreen: View {
             Text("Добавить список").font(.subheadline)
           }.foregroundStyle(.secondary).frame(width: 210, height: 130).background(
             Color.mutedSurface, in: RoundedRectangle(cornerRadius: 18))
-        }.buttonStyle(.plain).disabled(!model.canEdit)
+        }.buttonStyle(.plain).disabled(!model.canEditCollections)
           .padding(.horizontal, 8)
           .alignmentGuide(.taskCardsTop) { $0[.top] }
       }.padding(.horizontal, 20).padding(.bottom, 20)
     }
+    #if os(macOS)
+    .scrollClipDisabled()
+    #endif
+    .modifier(BoardDragAutoscroll(scrollOverSidebar: taskDragSession.source != nil))
   }
   private var rows: some View {
+    ScrollViewReader { proxy in
     ScrollView {
       LazyVStack(spacing: 6) {
         ForEach(listIDs, id: \.self) { id in
           let list = lists.first { $0.id == id }
-          rowGroup(title: list?.name ?? "Входящие", list: list)
+          rowGroup(title: list?.name ?? "Входящие", list: list) {
+            withAnimation(.easeOut(duration: 0.1)) {
+              proxy.scrollTo(QuickTaskScrollTarget(listID: list?.id), anchor: .bottom)
+            }
+          }
         }
         Button(action: createList) {
           Label("Добавить список", systemImage: "plus").frame(maxWidth: .infinity).padding(14)
-        }.buttonStyle(.bordered).disabled(!model.canEdit)
+        }.buttonStyle(.bordered).disabled(!model.canEditCollections)
       }.padding(20)
     }.refreshable { await model.refresh() }
+      .modifier(BoardDragAutoscroll(axis: .vertical, enabled: taskDragSession.source != nil))
+    }
   }
-  private func rowGroup(title: String, list: TaskList?) -> some View {
-    let items = tasks.filter { $0.listID == list?.id }
+  private func rowGroup(title: String, list: TaskList?, revealQuickTask: @escaping () -> Void) -> some View {
+    let items = tasks.filter { TaskProjectGrouping.listID(of: $0, in: model.snapshot.tasks) == list?.id }
     let listDrop = BoardDropDelegate(
           enabled: model.hasLoaded,
           hover: { dragSession.hover(list?.id ?? ListOrdering.inboxID) },
-          unhover: { dragSession.cancelHover(list?.id ?? ListOrdering.inboxID) },
+          hoverAt: { point in
+            taskDragSession.hoverList(list?.id)
+            if let bottom = taskEndPositions[list?.id ?? ListOrdering.inboxID], point.y >= bottom {
+              taskDragSession.previewEnd(listID: list?.id, visibleTasks: items, allTasks: model.snapshot.tasks)
+            }
+          },
+          unhover: {
+            dragSession.cancelHover(list?.id ?? ListOrdering.inboxID)
+          },
           localDrop: {
-            if let source = taskDragSession.source, items.contains(where: { $0.id == source }) {
-              model.saveTaskOrder(taskDragSession.order)
+            if let source = taskDragSession.source {
+              let task = model.snapshot.tasks.first { $0.id == source }
+              model.move(source, to: list?.id, includingProject: task?.parentID == nil)
+              model.saveTaskOrder(taskDragSession.order.filter { $0 != source } + [source])
               taskDragSession.finishDrop()
               return true
             }
@@ -176,11 +194,7 @@ struct BoardScreen: View {
         Text("\(items.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
         Spacer()
         if let list {
-          Button {
-            editList(list)
-          } label: {
-            Image(systemName: "ellipsis")
-          }.buttonStyle(.plain).accessibilityLabel("Настроить список " + list.name)
+          ListActionsMenu(model: model, listID: list.id, name: list.name, rename: { editList(list) })
         }
         Button {
           create(list?.id)
@@ -188,8 +202,12 @@ struct BoardScreen: View {
           Image(systemName: "plus")
         }.buttonStyle(.plain).disabled(!model.canEdit).accessibilityLabel("Добавить в " + title)
       }
-      TaskReorderGroup(model: model, tasks: items, session: taskDragSession, open: open, listDrop: listDrop)
-      QuickTaskCard(model: model, listID: list?.id, requiredTags: Array(selection?.tagIDs ?? []))
+      TaskReorderGroup(model: model, tasks: items, session: taskDragSession, open: open, listDrop: listDrop, destinationListID: list?.id)
+      QuickTaskCard(model: model, listID: list?.id, requiredTags: Array(selection?.tagIDs ?? []), reveal: revealQuickTask)
+        .id(QuickTaskScrollTarget(listID: list?.id))
+        .modifier(TaskListEndMarker(space: list?.id ?? ListOrdering.inboxID) { position in
+          taskEndPositions[list?.id ?? ListOrdering.inboxID] = position
+        })
     }.padding(.horizontal, 16).padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
       .modifier(
         WholeListDraggable(
@@ -197,12 +215,14 @@ struct BoardScreen: View {
           order: listIDs)
       )
       .opacity(dragSession.source == (list?.id ?? ListOrdering.inboxID) ? 0.18 : 1)
+      .coordinateSpace(name: list?.id ?? ListOrdering.inboxID)
       .onDrop(
         of: [UTType.text.identifier],
         delegate: listDrop)
   }
 }
 private struct BoardColumn: View {
+  @State private var taskEndPosition = CGFloat.infinity
   @Bindable var model: AppModel
   var title: String
   var symbol: String
@@ -220,10 +240,20 @@ private struct BoardColumn: View {
     BoardDropDelegate(
         enabled: model.hasLoaded,
         hover: { dragSession.hover(listID ?? ListOrdering.inboxID) },
-        unhover: { dragSession.cancelHover(listID ?? ListOrdering.inboxID) },
+        hoverAt: { point in
+          taskDragSession.hoverList(listID)
+          if point.y >= taskEndPosition {
+            taskDragSession.previewEnd(listID: listID, visibleTasks: tasks, allTasks: model.snapshot.tasks)
+          }
+        },
+        unhover: {
+          dragSession.cancelHover(listID ?? ListOrdering.inboxID)
+        },
         localDrop: {
-          if let source = taskDragSession.source, tasks.contains(where: { $0.id == source }) {
-            model.saveTaskOrder(taskDragSession.order)
+          if let source = taskDragSession.source {
+            let task = model.snapshot.tasks.first { $0.id == source }
+            model.move(source, to: listID, includingProject: task?.parentID == nil)
+            model.saveTaskOrder(taskDragSession.order.filter { $0 != source } + [source])
             taskDragSession.finishDrop()
             return true
           }
@@ -244,22 +274,36 @@ private struct BoardColumn: View {
         Text(title).font(.title3.bold()).lineLimit(1)
         Text("\(tasks.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
         Spacer(minLength: 0)
-        if let edit {
-          Button(action: edit) { Image(systemName: "ellipsis") }.buttonStyle(.plain)
-            .accessibilityLabel(
-              "Настроить список " + title)
+        if let listID, let edit {
+          ListActionsMenu(model: model, listID: listID, name: title, rename: edit)
         }
         Button(action: create) { Image(systemName: "plus") }.buttonStyle(.plain).disabled(
           !model.canEdit
         )
         .accessibilityLabel("Добавить в " + title)
       }.padding(.horizontal, 4)
+        .background {
+          #if os(macOS)
+          BoardScrollHeaderBoundary(id: listID ?? ListOrdering.inboxID).allowsHitTesting(false)
+          #endif
+        }
+      ScrollViewReader { proxy in
       ScrollView {
         LazyVStack(spacing: 6) {
-          TaskReorderGroup(model: model, tasks: tasks, session: taskDragSession, open: open, listDrop: listDrop)
-          QuickTaskCard(model: model, listID: listID, requiredTags: requiredTags)
+          TaskReorderGroup(model: model, tasks: tasks, session: taskDragSession, open: open, listDrop: listDrop, destinationListID: listID)
+          QuickTaskCard(model: model, listID: listID, requiredTags: requiredTags) {
+            withAnimation(.easeOut(duration: 0.1)) {
+              proxy.scrollTo(QuickTaskScrollTarget(listID: listID), anchor: .bottom)
+            }
+          }
+            .id(QuickTaskScrollTarget(listID: listID))
+            .modifier(TaskListEndMarker(space: listID ?? ListOrdering.inboxID) { taskEndPosition = $0 })
         }.padding(2)
-      }.alignmentGuide(.taskCardsTop) { $0[.top] + 2 }
+      }.modifier(BoardDragAutoscroll(axis: .vertical,
+          enabled: taskDragSession.source != nil && taskDragSession.hoveredListID == (listID ?? ListOrdering.inboxID),
+          headerID: listID ?? ListOrdering.inboxID))
+      }
+        .alignmentGuide(.taskCardsTop) { $0[.top] + 2 }
     }.padding(.horizontal, 6).padding(.vertical, 10).frame(width: 242).frame(
       maxHeight: .infinity, alignment: .top
     )
@@ -269,6 +313,7 @@ private struct BoardColumn: View {
         order: order)
     )
     .opacity(dragSession.source == (listID ?? ListOrdering.inboxID) ? 0.18 : 1)
+    .coordinateSpace(name: listID ?? ListOrdering.inboxID)
     .onDrop(
       of: [UTType.text.identifier],
       delegate: listDrop)
@@ -280,4 +325,28 @@ extension VerticalAlignment {
     static func defaultValue(in context: ViewDimensions) -> CGFloat { context[.top] }
   }
   fileprivate static let taskCardsTop = VerticalAlignment(TaskCardsTop.self)
+}
+
+private struct ListActionsMenu: View {
+  @Bindable var model: AppModel
+  var listID: UUID
+  var name: String
+  var rename: () -> Void
+  @State private var confirmDelete = false
+  var body: some View {
+    Menu {
+      Button("Изменить", systemImage: "pencil", action: rename)
+      Button("Удалить список", systemImage: "trash", role: .destructive) { confirmDelete = true }
+    } label: {
+      Image(systemName: "ellipsis").frame(width: 24, height: 24).contentShape(Rectangle())
+    }
+    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+    .disabled(!model.canEditCollections).accessibilityLabel("Действия со списком " + name)
+    .confirmationDialog("Удалить список «" + name + "»?", isPresented: $confirmDelete, titleVisibility: .visible) {
+      Button("Удалить список", role: .destructive) { model.perform(.deleteList(listID)) }
+      Button("Отмена", role: .cancel) {}
+    } message: {
+      Text("Все задачи списка будут перемещены во «Входящие».")
+    }
+  }
 }

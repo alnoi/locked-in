@@ -25,7 +25,12 @@ extension Snapshot {
         tasks.removeAll { $0.id == id }
         comments.removeAll { $0.taskID == id }
       case .board: boards.removeAll { $0.id == id }
-      case .list: lists.removeAll { $0.id == id }
+      case .list:
+        lists.removeAll { $0.id == id }
+        for index in tasks.indices where tasks[index].listID == id {
+          tasks[index].listID = nil
+          tasks[index].updatedAt = .now
+        }
       case .tag: tags.removeAll { $0.id == id }
       case .comment: comments.removeAll { $0.id == id }
       }

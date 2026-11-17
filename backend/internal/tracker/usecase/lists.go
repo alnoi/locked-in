@@ -79,12 +79,14 @@ func (u *UseCase) UpdateList(ctx context.Context, scope *uuid.UUID, in *models.U
 }
 func (u *UseCase) DeleteList(ctx context.Context, scope *uuid.UUID, id uuid.UUID) error {
 	return u.mutate(ctx, scope, func(ctx context.Context) error {
-		count, err := u.dependencies.Tasks.GetTasksCount(ctx, models.GetTasksFilters{Scope: scope, ListID: &id})
+		tasks, err := u.dependencies.Tasks.GetTasks(ctx, models.GetTasksFilters{Scope: scope, ListID: &id})
 		if err != nil {
 			return err
 		}
-		if count > 0 {
-			return apperr.ErrConflict()
+		for _, task := range tasks {
+			if _, err := u.dependencies.Tasks.UpdateTask(ctx, scope, &models.UpdateTaskIn{ID: task.ID, ClearListID: true}); err != nil {
+				return err
+			}
 		}
 		affected, err := u.dependencies.Lists.SoftDeleteList(ctx, models.DeleteListFilters{ID: &id, Scope: scope})
 		if err != nil {

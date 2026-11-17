@@ -1,10 +1,15 @@
 import LockedInDomain
 import SwiftUI
 
+struct QuickTaskScrollTarget: Hashable {
+  var listID: UUID?
+}
+
 struct QuickTaskCard: View {
   @Bindable var model: AppModel
   var listID: UUID?
   var requiredTags: [UUID] = []
+  var reveal: () -> Void = {}
   @State private var title = ""
   @State private var tagIDs: [UUID] = []
   @State private var saving = false
@@ -16,7 +21,9 @@ struct QuickTaskCard: View {
       Circle().strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [1.5, 2]))
         .foregroundStyle(.secondary.opacity(0.6)).frame(width: 17, height: 17).padding(.top, 2)
       VStack(alignment: .leading, spacing: 4) {
-        TextField(focused ? "Название задачи" : "", text: $title)
+        TextField(focused ? "Название задачи" : "", text: $title, axis: .vertical)
+          .lineLimit(1...)
+          .fixedSize(horizontal: false, vertical: true)
           .textFieldStyle(.plain).font(.body.weight(.medium)).focused($focused)
           .accessibilityLabel("Новая задача в списке")
           .onSubmit { Task { await save(draft, keepFocus: true) } }
@@ -39,14 +46,13 @@ struct QuickTaskCard: View {
                 ).disabled(requiredTags.contains(tag.id))
               }
             } label: {
-              Text(
-                selectedTags.isEmpty
-                  ? "# тег"
-                  : model.snapshot.tags.filter { selectedTags.contains($0.id) }.map {
-                    "#" + $0.name
-                  }.joined(separator: "  ")
-              )
-              .font(.caption).foregroundStyle(Color.blue.opacity(0.8)).lineLimit(2)
+              Group {
+                if selectedTags.isEmpty {
+                  Text("# тег").foregroundStyle(.secondary)
+                } else {
+                  TaskTagStyle.label(model.snapshot.tags.filter { selectedTags.contains($0.id) })
+                }
+              }.font(.caption).lineLimit(2)
             }.menuStyle(.borderlessButton).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             Button {
@@ -68,7 +74,19 @@ struct QuickTaskCard: View {
         QuickTaskOutsideClick(enabled: active && !saving, outside: finishEditing).allowsHitTesting(
           false)
       }
-      .disabled(!model.canEdit || saving)
+      .background {
+        GeometryReader { geometry in
+          Color.clear.onChange(of: geometry.size.height) { _, _ in revealIfFocused() }
+        }
+      }
+      .onChange(of: focused) { _, value in if value { revealIfFocused() } }
+      .onChange(of: title.isEmpty) { _, empty in if empty { revealIfFocused() } }
+      .disabled(!model.canEdit)
+  }
+  private func revealIfFocused() {
+    guard focused else { return }
+    // Wait for the growing editor and newly inserted tasks to finish layout.
+    DispatchQueue.main.async { reveal() }
   }
   private var selectedTags: Set<UUID> { Set(tagIDs).union(requiredTags) }
   private var draft: TaskInput {
@@ -94,8 +112,10 @@ struct QuickTaskCard: View {
     defer { saving = false }
     do {
       try await model.mutate(.task(nil, input))
-      title = ""
-      tagIDs = []
+      if draft.title == input.title && Set(draft.tagIDs) == Set(input.tagIDs) {
+        title = ""
+        tagIDs = []
+      }
       errorMessage = nil
       if keepFocus { focused = true }
     } catch { errorMessage = error.localizedDescription }

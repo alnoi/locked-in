@@ -6,16 +6,20 @@ enum CalendarDisplayMode: String { case day, week, month }
 struct CalendarMonthGrid: View {
   var day: Date
   var tasks: [TaskRecord]
+  var tags: [TagRecord]
+  var pendingIDs: Set<UUID>
   var visibleMonthChanged: (Date) -> Void
   var select: (Date) -> Void
   @State private var months: [Date]
   @State private var position: Date?
   private let calendar = Calendar.current
 
-  init(day: Date, tasks: [TaskRecord], visibleMonthChanged: @escaping (Date) -> Void,
+  init(day: Date, tasks: [TaskRecord], tags: [TagRecord], pendingIDs: Set<UUID>, visibleMonthChanged: @escaping (Date) -> Void,
        select: @escaping (Date) -> Void) {
     self.day = day
     self.tasks = tasks
+    self.tags = tags
+    self.pendingIDs = pendingIDs
     self.visibleMonthChanged = visibleMonthChanged
     self.select = select
     let calendar = Calendar.current
@@ -82,9 +86,11 @@ struct CalendarMonthGrid: View {
               .background(calendar.isDateInToday(date) ? Color.accent : .clear, in: Circle())
             let limit = height >= 110 ? 3 : 1
             ForEach(items.prefix(limit)) { task in
-              Text(task.title).font(.system(size: 10, weight: .medium)).lineLimit(1)
+              Text(task.title).font(.system(size: 10, weight: .medium)).strikethrough(task.completed).lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 3).padding(.vertical, 2)
-                .background(Color.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 3))
+                .foregroundStyle(TaskTagStyle.color(task, tags: tags))
+                .background(TaskTagStyle.color(task, tags: tags).opacity(0.12), in: RoundedRectangle(cornerRadius: 3))
+                .overlay(alignment: .trailing) { PendingSyncBadge(pending: pendingIDs.contains(task.id)) }
             }
             if items.count > limit {
               Text("+\(items.count - limit)").font(.system(size: 10)).foregroundStyle(.secondary)

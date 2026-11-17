@@ -10,7 +10,7 @@ struct TagsScreen: View {
             HStack {
                 VStack(alignment: .leading, spacing: 6) { Text("Маленькие метки. Больше порядка.").font(.title2.bold()); Text("Группируй задачи и создавай доски с фильтрами.").foregroundStyle(.secondary) }
                 Spacer()
-                Button { editor = TagPresentation() } label: { Label("Новый тег", systemImage: "plus") }.buttonStyle(.borderedProminent).disabled(!model.canEdit)
+                Button { editor = TagPresentation() } label: { Label("Новый тег", systemImage: "plus") }.buttonStyle(.borderedProminent).disabled(!model.canEditCollections)
             }.padding([.horizontal, .top], 24)
             if model.snapshot.tags.isEmpty { EmptyState(symbol: "number", title: "У всего будет своя метка", message: "Создай первый тег: например, срочно, дом или backend.") }
             else {
@@ -34,6 +34,7 @@ private struct TagEditor: View {
     @State private var color: String
     @State private var message: String?
     @State private var confirmDelete = false
+    @State private var saving = false
     @Environment(\.dismiss) private var dismiss
     private let colors = ["#6558E8", "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#EC4899", "#64748B"]
     init(model: AppModel, presentation: TagPresentation) { self.model = model; self.presentation = presentation; _name = State(initialValue: presentation.name); _color = State(initialValue: presentation.color) }
@@ -47,15 +48,25 @@ private struct TagEditor: View {
                 }
                 if exists { Section { Button("Удалить тег", role: .destructive) { confirmDelete = true } } }
                 EditorFooter(message: message)
-            }.formStyle(.grouped).navigationTitle(exists ? "Изменить тег" : "Новый тег")
+            }.onSubmit { Task { await save() } }.formStyle(.grouped).navigationTitle(exists ? "Изменить тег" : "Новый тег")
                 .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() }.disabled(model.isMutating) }
-                    ToolbarItem(placement: .confirmationAction) { Button("Сохранить") { Task { do { try await model.mutate(.tag(exists ? presentation.id : nil, name: name.trimmingCharacters(in: .whitespacesAndNewlines), color: color)); dismiss() } catch { message = error.localizedDescription } } }.disabled(!model.canEdit || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+                    ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction).disabled(model.isMutating) }
+                    ToolbarItem(placement: .confirmationAction) { Button("Сохранить") { Task { await save() } }.keyboardShortcut(.defaultAction).disabled(!model.canEditCollections || saving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
                 }
                 .confirmationDialog("Удалить тег?", isPresented: $confirmDelete, titleVisibility: .visible) { Button("Удалить", role: .destructive) { Task { do { try await model.mutate(.deleteTag(presentation.id)); dismiss() } catch { message = error.localizedDescription } } } }
         }.interactiveDismissDisabled()
         #if os(macOS)
         .frame(width: 430, height: 340)
         #endif
+    }
+    private func save() async {
+        guard !saving, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        saving = true
+        defer { saving = false }
+        do {
+            try await model.mutate(.tag(exists ? presentation.id : nil,
+                name: name.trimmingCharacters(in: .whitespacesAndNewlines), color: color))
+            dismiss()
+        } catch { message = error.localizedDescription }
     }
 }

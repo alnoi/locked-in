@@ -3,7 +3,9 @@ import SwiftUI
 struct ReorderDragSource: ViewModifier {
   var id: UUID
   var provider: () -> NSItemProvider
-  func body(content: Content) -> some View {
+  var enabled = true
+  @ViewBuilder func body(content: Content) -> some View {
+    if enabled {
     #if os(macOS)
       content.background {
         GeometryReader { geometry in
@@ -15,6 +17,7 @@ struct ReorderDragSource: ViewModifier {
     #else
       content.contentShape(Rectangle()).onDrag(provider)
     #endif
+    } else { content }
   }
 }
 
@@ -35,9 +38,12 @@ private struct LandingDragBridge: NSViewRepresentable {
 
 /// Uses the same native payload as other drop targets, then lands the preview at the
 /// source view's new layout position rather than letting the system image disappear.
-private final class LandingDragView: NSView, NSDraggingSource {
+final class LandingDragView: NSView, NSDraggingSource {
   private static let candidates = NSHashTable<LandingDragView>.weakObjects()
   private static var active: LandingDragView?
+  private(set) static var isDragging = false
+  private var landingTargetID: UUID?
+  static func redirectLanding(to id: UUID) { active?.landingTargetID = id }
   private static weak var pressed: LandingDragView?
   private static var downPoint = NSPoint.zero
   private var monitor: Any?
@@ -116,7 +122,9 @@ private final class LandingDragView: NSView, NSDraggingSource {
         let image = snapshotImage(), let provider = provider?()
       else { return event }
       Self.pressed = nil
+      landingTargetID = nil
       Self.active = self
+      Self.isDragging = true
       draggedID = id
       retainedProvider = provider
       originalFrame = screenFrame
@@ -168,13 +176,13 @@ private final class LandingDragView: NSView, NSDraggingSource {
     previewPanel?.setFrame(previewFrame(at: screenPoint), display: true)
   }
   func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+    Self.isDragging = false
     guard let panel = previewPanel else { retainedProvider = nil; Self.active = nil; return }
     panel.setFrame(previewFrame(at: screenPoint), display: true)
-    if operation.isEmpty { retainedProvider = nil }
-    // Let the drop commit and SwiftUI layout finish before reading the landing frame.
+    if operation.isEmpty { (retainedProvider as? ListDragProvider)?.finish() }
     DispatchQueue.main.async { [self, panel] in
       let destination = Self.candidates.allObjects.first {
-        $0.id == draggedID && $0.window != nil && !$0.isHiddenOrHasHiddenAncestor
+        $0.id == (landingTargetID ?? draggedID) && $0.window != nil && !$0.isHiddenOrHasHiddenAncestor
       }
       destination?.window?.contentView?.layoutSubtreeIfNeeded()
       let layoutFrame = destination.map { $0.screenFrame }
@@ -182,15 +190,15 @@ private final class LandingDragView: NSView, NSDraggingSource {
         frame.width > 1 && frame.height > 1 ? frame : nil
       } ?? originalFrame
       // Anchor the full column at its top edge, even if layout is still interpolating.
-      let target = NSRect(x: validFrame.minX, y: validFrame.maxY - originalFrame.height,
-                          width: originalFrame.width, height: originalFrame.height)
+      let target = validFrame
       NSAnimationContext.runAnimationGroup { context in
-        context.duration = 0.32
+        context.duration = 0.08
         context.timingFunction = CAMediaTimingFunction(name: .easeOut)
         panel.animator().setFrame(target, display: true)
         panel.animator().alphaValue = 1
       } completionHandler: { [self, panel] in
         panel.orderOut(nil)
+        (retainedProvider as? ListDragProvider)?.finish()
         retainedProvider = nil
         previewPanel = nil
         Self.active = nil

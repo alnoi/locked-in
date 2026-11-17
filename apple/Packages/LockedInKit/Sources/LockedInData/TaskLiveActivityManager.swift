@@ -4,6 +4,7 @@
   import LockedInDomain
   import UIKit
 
+  @available(iOSApplicationExtension, unavailable)
   @MainActor
   final class TaskLiveActivityManager {
     func reconcile(_ tasks: [TaskRecord], tags: [TagRecord], space: String) async throws {

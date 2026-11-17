@@ -6,6 +6,7 @@ public struct TaskRecord: Codable, Identifiable, Hashable, Sendable {
   public var description: String?
   public var listID: UUID?
   public var parentID: UUID?
+  public var isProject: Bool?
   public var deadlineDate: String?
   public var deadlineAt: Date?
   public var plannedAt: Date?
@@ -24,6 +25,7 @@ public struct TaskRecord: Codable, Identifiable, Hashable, Sendable {
     description = input.description
     listID = input.listID
     parentID = input.parentID
+    isProject = input.isProject
     deadlineDate = input.deadlineDate
     deadlineAt = input.deadlineAt
     plannedAt = input.plannedAt
@@ -45,6 +47,7 @@ public struct TaskInput: Codable, Equatable, Sendable {
   public var description: String?
   public var listID: UUID?
   public var parentID: UUID?
+  public var isProject: Bool?
   public var deadlineDate: String?
   public var deadlineAt: Date?
   public var plannedAt: Date?
@@ -57,12 +60,13 @@ public struct TaskInput: Codable, Equatable, Sendable {
     deadlineDate: String? = nil, deadlineAt: Date? = nil, plannedAt: Date? = nil,
     durationMinutes: Int? = nil, reminderMode: ReminderMode? = nil,
     reminderMinutesBefore: Int? = nil,
-    tagIDs: [UUID] = []
+    tagIDs: [UUID] = [], isProject: Bool? = nil
   ) {
     self.title = title
     self.description = description
     self.listID = listID
     self.parentID = parentID
+    self.isProject = isProject
     self.deadlineDate = deadlineDate
     self.deadlineAt = deadlineAt
     self.plannedAt = plannedAt
@@ -77,7 +81,7 @@ public struct TaskInput: Codable, Equatable, Sendable {
       parentID: task.parentID,
       deadlineDate: task.deadlineDate, deadlineAt: task.deadlineAt, plannedAt: task.plannedAt,
       durationMinutes: task.durationMinutes, reminderMode: task.reminderMode,
-      reminderMinutesBefore: task.reminderMinutesBefore, tagIDs: task.tagIDs)
+      reminderMinutesBefore: task.reminderMinutesBefore, tagIDs: task.tagIDs, isProject: task.isProject)
   }
 }
 

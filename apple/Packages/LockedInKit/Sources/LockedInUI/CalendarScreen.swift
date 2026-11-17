@@ -5,6 +5,7 @@ struct CalendarScreen: View {
     @Bindable var model: AppModel
     var search: String
     var showCompleted: Bool
+    var focus: CalendarTaskFocus?
     var open: (TaskRecord) -> Void
     var create: (Date) -> Void
     @State private var day = Calendar.current.startOfDay(for: Date())
@@ -21,12 +22,27 @@ struct CalendarScreen: View {
     @State private var showUnplanned = true
     private let calendar = Calendar.current
     private let hourHeight: CGFloat = 60
+    init(model: AppModel, search: String, showCompleted: Bool, focus: CalendarTaskFocus? = nil,
+      open: @escaping (TaskRecord) -> Void, create: @escaping (Date) -> Void) {
+      self.model = model; self.search = search; self.showCompleted = showCompleted
+      self.focus = focus; self.open = open; self.create = create
+      _day = State(initialValue: Calendar.current.startOfDay(for: focus?.date ?? .now))
+      #if os(macOS)
+      _mode = State(initialValue: focus == nil ? .week : .day)
+      #else
+      _mode = State(initialValue: .day)
+      #endif
+    }
+    private var scrollHour: Int {
+      let date = focus.flatMap { calendar.isDate($0.date, inSameDayAs: day) ? $0.date : nil } ?? .now
+      return max(0, calendar.component(.hour, from: date) - 1)
+    }
     private var week: [Date] {
         var calendar = self.calendar; calendar.firstWeekday = 2
         let start = calendar.dateInterval(of: .weekOfYear, for: day)!.start
         return (0..<7).map { calendar.date(byAdding: .day, value: $0, to: start)! }
     }
-    private var tasks: [TaskRecord] { model.snapshot.tasks.filter { (showCompleted || !$0.completed) && (search.isEmpty || $0.title.localizedCaseInsensitiveContains(search)) } }
+    private var tasks: [TaskRecord] { model.snapshot.tasks.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) } }
     private var periodID: String {
       if mode == .month { return "month-feed" }
       let component: Calendar.Component = mode == .month ? .month : (mode == .week ? .weekOfYear : .day)
@@ -51,7 +67,7 @@ struct CalendarScreen: View {
             ZStack {
             Group {
             if mode == .month {
-              CalendarMonthGrid(day: day, tasks: tasks, visibleMonthChanged: { day = $0 }) { date in
+              CalendarMonthGrid(day: day, tasks: tasks, tags: model.snapshot.tags, pendingIDs: model.visibleUnsyncedTaskIDs, visibleMonthChanged: { day = $0 }) { date in
                 selectDate(date)
                 mode = .day
               }
@@ -95,8 +111,8 @@ struct CalendarScreen: View {
                                 if let interaction {
                                   CalendarInteractionShadow(task: interaction.task, duration: interaction.duration)
                                     .frame(width: interaction.frame.width, height: interaction.frame.height)
-                                    .background(Color.accent.opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
-                                    .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(Color.accent.opacity(0.6)) }
+                                    .background(TaskTagStyle.color(interaction.task, tags: model.snapshot.tags).opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
+                                    .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(TaskTagStyle.color(interaction.task, tags: model.snapshot.tags).opacity(0.6)) }
                                     .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
                                     .opacity(interaction.settling ? 1 : 0.62)
                                     .offset(x: interaction.frame.minX, y: interaction.frame.minY)
@@ -105,8 +121,9 @@ struct CalendarScreen: View {
                                }.coordinateSpace(name: "calendarTimeline")
                                .frame(height: hourHeight * 24).padding(.bottom,16)
                               }
-                              .onAppear { proxy.scrollTo("hour-\(max(0, calendar.component(.hour, from: .now) - 1))",anchor: .topLeading) }
-                              .onChange(of: day) { _,_ in proxy.scrollTo("hour-\(max(0, calendar.component(.hour, from: .now) - 1))",anchor: .topLeading) }
+                              .onAppear { proxy.scrollTo("hour-\(scrollHour)",anchor: .topLeading) }
+                              .onChange(of: day) { _,_ in proxy.scrollTo("hour-\(scrollHour)",anchor: .topLeading) }
+                              .onChange(of: focus?.id) { _,_ in proxy.scrollTo("hour-\(scrollHour)",anchor: .topLeading) }
                             }.frame(height: max(1,viewport.size.height - (displayedWeek ? 40 : 0)))
                         }.frame(width: width)
                 }
@@ -116,6 +133,26 @@ struct CalendarScreen: View {
             }.clipped()
               .modifier(CalendarPeriodSwipe(enabled: interaction == nil && mode != .month, shift: shift))
         }.onChange(of: mode) { _, _ in cancelInteraction() }
+        .onChange(of: focus?.id) { _, _ in
+          guard let focus else { return }
+          cancelInteraction()
+          day = calendar.startOfDay(for: focus.date)
+          mode = .day
+        }
+        .background {
+          AppShortcutHandler(priority: 10, enabled: interaction == nil && !pickDate) { shortcut in
+            switch shortcut {
+            case .previousPeriod: shift(-1)
+            case .nextPeriod: shift(1)
+            case .today: selectDate(calendar.startOfDay(for: .now))
+            case .day: setMode(.day)
+            case .week: setMode(.week)
+            case .month: setMode(.month)
+            default: return false
+            }
+            return true
+          }.allowsHitTesting(false)
+        }
     }
     private var calendarHeader: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -125,7 +162,7 @@ struct CalendarScreen: View {
                 Spacer(minLength: 0)
                 Picker("Вид", selection: Binding(get: { mode }, set: { value in
                   guard !isPaging else { return }
-                  withAnimation(.easeInOut(duration: 0.28)) { mode = value }
+                  withAnimation(.easeInOut(duration: 0.18)) { mode = value }
                 })) {
                   Text("День").tag(CalendarDisplayMode.day)
                   Text("Неделя").tag(CalendarDisplayMode.week)
@@ -159,8 +196,8 @@ struct CalendarScreen: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 Image(systemName: "tray").foregroundStyle(.secondary)
-                ForEach(tasks.filter { $0.plannedAt == nil }) { task in
-                    Button { open(task) } label: { Text(task.title).font(.caption.weight(.medium)).lineLimit(2).truncationMode(.tail).multilineTextAlignment(.leading).frame(width: 170, height: 32, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 8).background(Color.mutedSurface, in: RoundedRectangle(cornerRadius: 12)) }
+                ForEach(tasks.filter { $0.plannedAt == nil && (showCompleted || !$0.completed) }) { task in
+                    Button { open(task) } label: { Text(task.title).font(.caption.weight(.medium)).lineLimit(2).truncationMode(.tail).multilineTextAlignment(.leading).frame(width: 170, height: 32, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 8).foregroundStyle(TaskTagStyle.color(task, tags: model.snapshot.tags)).background(TaskTagStyle.color(task, tags: model.snapshot.tags).opacity(0.12), in: RoundedRectangle(cornerRadius: 12)).overlay(alignment: .topTrailing) { PendingSyncBadge(pending: model.visibleUnsyncedTaskIDs.contains(task.id)).padding(4) } }
                         .buttonStyle(.plain).draggable(task.id.uuidString)
                 }
             }.padding(.horizontal, 20).padding(.bottom, 12)
@@ -269,17 +306,17 @@ struct CalendarScreen: View {
       value.duration = input.durationMinutes ?? 60
       value.settling = true
       let token = value.token
-      withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { interaction = value }
+      withAnimation(.snappy(duration: 0.18, extraBounce: 0)) { interaction = value }
       Task { @MainActor in
-        let animation = Task { try? await Task.sleep(for: .milliseconds(320)) }
+        let animation = Task { try? await Task.sleep(for: .milliseconds(180)) }
         do {
           try await model.mutate(.task(value.task.id, input))
           await animation.value
         } catch {
           model.errorMessage = model.friendly(error)
           if interaction?.token == token {
-            withAnimation(.easeOut(duration: 0.2)) { interaction?.frame = value.originalFrame }
-            try? await Task.sleep(for: .milliseconds(220))
+            withAnimation(.easeOut(duration: 0.12)) { interaction?.frame = value.originalFrame }
+            try? await Task.sleep(for: .milliseconds(120))
           }
         }
         guard interaction?.token == token else { return }
@@ -291,11 +328,15 @@ struct CalendarScreen: View {
       guard interaction == nil, !isPaging, date != day else { return }
       pageDirection.sign = date > day ? 1 : -1
       isPaging = true
-      withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .easeInOut(duration: 0.28)) {
+      withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .easeInOut(duration: 0.18)) {
         day = date
       } completion: {
         isPaging = false
       }
+    }
+    private func setMode(_ value: CalendarDisplayMode) {
+      guard !isPaging, interaction == nil else { return }
+      withAnimation(.easeInOut(duration: 0.18)) { mode = value }
     }
     private func shift(_ amount: Int) {
       guard interaction == nil else { return }
@@ -320,7 +361,7 @@ private struct CalendarInteractionShadow: View {
     var duration: Int
     var body: some View {
       VStack(alignment: .leading, spacing: 3) {
-        Text(task.title).font(.caption.weight(.semibold)).lineLimit(2)
+        Text(task.title).font(.caption.weight(.semibold)).strikethrough(task.completed).lineLimit(2)
         Text("\(duration) мин").font(.system(size: 10)).foregroundStyle(.secondary)
       }.padding(7).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).clipped()
     }
@@ -333,7 +374,7 @@ private struct CalendarTaskBlock: View {
     var ended: () -> Void
     var cancelled: () -> Void
     @GestureState private var tracking = false
-    private var color: Color { task.completed ? .gray : Color(hex: model.snapshot.tags.first { task.tagIDs.contains($0.id) }?.color ?? "#6558E8") }
+    private var color: Color { TaskTagStyle.color(task, tags: model.snapshot.tags) }
     private func drag(resizing: Bool) -> some Gesture {
       DragGesture(minimumDistance: 3, coordinateSpace: .named("calendarTimeline"))
         .updating($tracking) { _, state, _ in state = true }
@@ -343,7 +384,10 @@ private struct CalendarTaskBlock: View {
     var body: some View {
         GeometryReader { geometry in
             VStack(alignment: .leading, spacing: 3) {
-                Text(task.title).font(.caption.weight(.semibold)).strikethrough(task.completed).lineLimit(geometry.size.height > 65 ? 2 : 1)
+                HStack(alignment: .top, spacing: 3) {
+                  Text(task.title).font(.caption.weight(.semibold)).strikethrough(task.completed).lineLimit(geometry.size.height > 65 ? 2 : 1)
+                  PendingSyncBadge(pending: model.visibleUnsyncedTaskIDs.contains(task.id))
+                }
                 if geometry.size.height > 42, let start = task.plannedAt {
                   Text(start.formatted(date: .omitted, time: .shortened) + (task.durationMinutes.map { " · \($0) мин" } ?? "")).font(.system(size: 10)).lineLimit(1)
                 }

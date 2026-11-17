@@ -19,7 +19,7 @@
       let panel = ReminderPanel(
         contentRect: NSRect(x: 0, y: 0, width: 350, height: 190),
         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-      panel.title = "Напоминание Locked In"
+      panel.title = "Напоминание TrackIt"
       panel.isOpaque = false
       panel.backgroundColor = .clear
       panel.hasShadow = false

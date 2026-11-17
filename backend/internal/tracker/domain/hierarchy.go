@@ -10,6 +10,9 @@ func ValidateTaskHierarchy(task models.Task, tasks []models.Task) error {
 	if task.ParentID == nil {
 		return nil
 	}
+	if task.IsProject {
+		return apperr.ErrConflict()
+	}
 	if *task.ParentID == task.ID {
 		return apperr.ErrValidation()
 	}

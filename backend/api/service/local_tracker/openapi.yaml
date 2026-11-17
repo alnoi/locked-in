@@ -1,7 +1,7 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Locked In API",
+    "title": "TrackIt API",
     "version": "0.1.0"
   },
   "paths": {
@@ -1442,6 +1442,9 @@
           "reminderMinutesBefore": {
             "type": "integer",
             "description": "Minutes before the planned start (or deadline if no planned start), from 0 to 10080."
+          },
+          "isProject": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1452,7 +1455,8 @@
           "tagIDs",
           "completed",
           "reminderMode",
-          "reminderMinutesBefore"
+          "reminderMinutesBefore",
+          "isProject"
         ]
       },
       "CreateTaskIn": {
@@ -1501,6 +1505,15 @@
           "reminderMinutesBefore": {
             "type": "integer",
             "description": "Minutes before the planned start (or deadline if no planned start), from 0 to 10080."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "\u0421\u0442\u0430\u0431\u0438\u043b\u044c\u043d\u044b\u0439 ID \u0437\u0430\u0434\u0430\u0447\u0438 \u0434\u043b\u044f \u043e\u0444\u043b\u0430\u0439\u043d-\u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u0438.",
+            "x-go-name": "ID"
+          },
+          "isProject": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1574,6 +1587,9 @@
           "reminderMinutesBefore": {
             "type": "integer",
             "description": "Minutes before the planned start (or deadline if no planned start), from 0 to 10080."
+          },
+          "isProject": {
+            "type": "boolean"
           }
         }
       },

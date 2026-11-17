@@ -10,6 +10,7 @@ import UserNotifications
   import AppKit
 #endif
 
+@available(iOSApplicationExtension, unavailable)
 @MainActor @Observable
 public final class TaskAlertScheduler {
   public private(set) var testDeliveryStatus: String?
@@ -92,14 +93,14 @@ public final class TaskAlertScheduler {
         var state = AlarmManager.shared.authorizationState
         if state == .notDetermined { state = try await AlarmManager.shared.requestAuthorization() }
         guard state == .authorized else {
-          throw TrackerError.validation("Разреши будильники для Locked In в настройках iPhone.")
+          throw TrackerError.validation("Разреши будильники для TrackIt в настройках iPhone.")
         }
         return
       }
     #endif
     let allowed = try await center.requestAuthorization(options: [.alert, .sound, .badge])
     guard allowed else {
-      throw TrackerError.validation("Разреши уведомления для Locked In в настройках устройства.")
+      throw TrackerError.validation("Разреши уведомления для TrackIt в настройках устройства.")
     }
   }
   public func sendTestNotification(after delay: TimeInterval = 5) async throws {
@@ -107,7 +108,7 @@ public final class TaskAlertScheduler {
     testDeliveryStatus = "Тест запланирован через 5 секунд."
     center.removeDeliveredNotifications(withIdentifiers: ["locked-in-debug-notification"])
     let content = UNMutableNotificationContent()
-    content.title = "Locked In · тестовое уведомление"
+    content.title = "TrackIt · тестовое уведомление"
     content.body = "Если ты видишь это сообщение, доставка уведомлений работает."
     content.sound = .default
     let request = UNNotificationRequest(
@@ -352,7 +353,7 @@ public final class TaskAlertScheduler {
       guard onReminder?(task) == true else { return }
       presentedSignatures[task.id] = signature
       if task.id == TaskAlertIDs.test {
-        testDeliveryStatus = "Показана анимированная карточка Locked In. Системный дубль отменён."
+        testDeliveryStatus = "Показана анимированная карточка TrackIt. Системный дубль отменён."
       }
       center.removePendingNotificationRequests(withIdentifiers: [requestID])
       NSSound(named: "Pop")?.play()

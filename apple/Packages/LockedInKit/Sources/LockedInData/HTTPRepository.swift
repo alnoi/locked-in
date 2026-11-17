@@ -1,7 +1,7 @@
 import Foundation
 import LockedInDomain
 
-public struct HTTPRepository: TrackerRepository {
+public struct HTTPRepository: TaskSyncRemote {
   public let baseURL: URL
   private let session: URLSession
   public init(baseURL: URL, session: URLSession = .shared) {
@@ -22,6 +22,11 @@ public struct HTTPRepository: TrackerRepository {
     return try await Snapshot(
       user: user, tasks: tasks.items, boards: boards.items, lists: lists.items, tags: tags.items,
       comments: comments.items)
+  }
+  public func createTask(id: UUID, input: TaskInput) async throws -> TaskRecord {
+    var body = try object(input)
+    body["id"] = id.uuidString
+    return try await request("tasks", method: "POST", body: body)
   }
   public func apply(_ change: Change) async throws -> ChangeResult {
     switch change {
@@ -116,7 +121,8 @@ public struct HTTPRepository: TrackerRepository {
     case 409:
       throw TrackerError.conflict(
         "Есть связанные задачи, списки или теги. Сначала перенеси их или убери связь.")
-    default: throw TrackerError.validation("Сервер временно недоступен. Попробуй ещё раз.")
+    case 500...599: throw SyncConnectionError.serverUnavailable
+    default: throw TrackerError.validation("Сервер отклонил запрос. Попробуй ещё раз.")
     }
   }
 }

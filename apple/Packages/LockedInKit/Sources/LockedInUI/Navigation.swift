@@ -2,7 +2,7 @@ import Foundation
 import LockedInDomain
 
 public enum Destination: Hashable {
-    case today, inbox, all, calendar, board, completed, tags
+    case today, inbox, all, calendar, board, overdue, completed, tags
     case boardDetail(UUID)
     case list(UUID)
     case tag(UUID)
@@ -13,6 +13,7 @@ public enum Destination: Hashable {
         case .all: return "Все задачи"
         case .calendar: return "Календарь"
         case .board: return "Общая доска"
+        case .overdue: return "Просроченные"
         case .completed: return "Завершённые"
         case .tags: return "Теги"
         case .boardDetail(let id): return snapshot.boards.first { $0.id == id }?.name ?? "Доска"
@@ -27,6 +28,7 @@ public enum Destination: Hashable {
         case .all: return "checklist"
         case .calendar: return "calendar"
         case .board, .boardDetail: return "rectangle.split.3x1"
+        case .overdue: return "calendar.badge.exclamationmark"
         case .completed: return "checkmark.circle"
         case .tags, .tag: return "number"
         case .list: return "list.bullet"
@@ -34,22 +36,14 @@ public enum Destination: Hashable {
     }
     func tasks(in snapshot: Snapshot, now: Date = .now) -> [TaskRecord] {
         switch self {
-        case .inbox: return snapshot.tasks.filter { $0.listID == nil }
+        case .inbox: return snapshot.tasks.filter { TaskProjectGrouping.listID(of: $0, in: snapshot.tasks) == nil }
         case .completed: return snapshot.tasks.filter(\.completed)
         case .list(let id): return TrackerRules.tasks(in: id, snapshot: snapshot)
         case .tag(let id): return snapshot.tasks.filter { $0.tagIDs.contains(id) }
+        case .overdue:
+            return snapshot.tasks.filter { WidgetAgenda.needsRescheduling($0, now: now) }
         case .today:
-            return snapshot.tasks.filter { task in
-                if task.completed { return false }
-                if let date = task.plannedAt, Calendar.current.isDate(date, inSameDayAs: now) { return true }
-                if let date = task.deadlineAt,
-                    date < Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now))!
-                {
-                    return true
-                }
-                if let date = task.deadlineDate, date <= DateOnly.string(now) { return true }
-                return false
-            }
+            return WidgetAgenda.today(snapshot.tasks, now: now)
         default: return snapshot.tasks
         }
     }
