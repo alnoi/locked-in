@@ -1,0 +1,10 @@
+*
+!go.mod
+!go.sum
+!cmd/**
+!internal/**
+!pkg/**
+!api/**
+!migrations/**
+**/*_test.go
+**/testdata/**

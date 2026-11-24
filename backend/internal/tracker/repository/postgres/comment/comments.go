@@ -71,3 +71,17 @@ func (r *Repository) write(ctx context.Context, query string, args pgx.NamedArgs
 	}
 	return entityToModel(value), nil
 }
+
+func (r *Repository) RestoreComment(ctx context.Context, scope *uuid.UUID, id uuid.UUID) error {
+	if scope == nil {
+		return apperr.ErrNotFound()
+	}
+	tag, err := r.getter.Get(ctx).Exec(ctx, restoreQuery, pgx.NamedArgs{"id": id, "scope": scope})
+	if err != nil {
+		return fmt.Errorf("RestoreComment: %w", apperr.HandleConstraintViolation(err))
+	}
+	if tag.RowsAffected() == 0 {
+		return apperr.ErrNotFound()
+	}
+	return nil
+}

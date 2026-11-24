@@ -58,7 +58,26 @@ public actor LocalRepository: TrackerRepository {
     var next = archive!
     let result: ChangeResult
     switch change {
+    case .restore(let record):
+      switch record {
+      case .task(let value):
+        try TrackerRules.validate(TaskInput(value), id: value.id, in: snapshot)
+        next.deletedTasks.removeAll { $0.id == value.id }
+      case .board(let value):
+        try TrackerRules.validate(BoardInput(value), id: value.id, in: snapshot)
+        next.deletedBoards.removeAll { $0.id == value.id }
+      case .list(let value):
+        try TrackerRules.validate(ListInput(name: value.name, boardID: value.boardID), id: value.id, in: snapshot)
+        next.deletedLists.removeAll { $0.id == value.id }
+      case .tag(let value): next.deletedTags.removeAll { $0.id == value.id }
+      case .comment(let value):
+        guard snapshot.tasks.contains(where: { $0.id == value.taskID }) else { throw TrackerError.notFound }
+        next.deletedComments.removeAll { $0.id == value.id }
+      case .deleted: throw TrackerError.notFound
+      }
+      result = record
     case .task(let id, let input):
+      let input = TrackerRules.inheritingProjectTags(input, id: id, in: snapshot)
       try TrackerRules.validate(input, id: id, in: snapshot)
       let existing = snapshot.tasks.first { $0.id == id }
       if id != nil && existing == nil { throw TrackerError.notFound }

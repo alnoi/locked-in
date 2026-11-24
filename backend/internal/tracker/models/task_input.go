@@ -23,6 +23,7 @@ type CreateTaskIn struct {
 	TagIDs                []uuid.UUID
 }
 type UpdateTaskIn struct {
+	InheritProjectTags    *bool
 	IsProject             *bool
 	ID                    uuid.UUID
 	Title                 *string

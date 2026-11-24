@@ -72,3 +72,12 @@ func (h *Handlers) DeleteComment(c *gin.Context, id uuid.UUID) {
 	}
 	c.Status(204)
 }
+
+func (h *Handlers) RestoreComment(c *gin.Context, id uuid.UUID) {
+	out, err := h.usecase.RestoreComment(c.Request.Context(), h.actor(), id)
+	if err != nil {
+		apperr.WriteError(c, err)
+		return
+	}
+	c.JSON(200, mapCommentToOut(out))
+}

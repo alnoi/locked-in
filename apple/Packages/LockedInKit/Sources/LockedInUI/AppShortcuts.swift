@@ -1,13 +1,14 @@
 import SwiftUI
 
 enum AppShortcut: Equatable {
+  case undo, togglePlan
   case search, newInboxTask, sidebar, submit, close, complete, delete, project, links, unplan
   case previousPeriod, nextPeriod, today, day, week, month, previousSection, finishSectionSwitch
 
   static func key(code: UInt16, fallback: String) -> String {
     let keys: [UInt16: String] = [
       36: "return", 76: "return", 48: "tab", 53: "escape", 51: "delete", 123: "left", 124: "right",
-      3: "f", 17: "t", 1: "s", 37: "l", 35: "p", 18: "1", 19: "2", 20: "3",
+      6: "z", 3: "f", 17: "t", 1: "s", 37: "l", 35: "p", 18: "1", 19: "2", 20: "3",
     ]
     return keys[code] ?? fallback
   }
@@ -18,9 +19,11 @@ enum AppShortcut: Equatable {
     if modifiers == .control && key == "tab" { return .previousSection }
     if modifiers == .command {
       switch key {
+      case "z": return editingText ? nil : .undo
       case "f": return .search
       case "t": return .newInboxTask
       case "s": return .sidebar
+      case "p": return .togglePlan
       case "l": return .links
       case "return": return .submit
       case "delete": return .delete
@@ -153,6 +156,10 @@ struct AppShortcutHandler: NSViewRepresentable {
       }
       guard let shortcut = AppShortcut.match(key: key, modifiers: modifiers,
         editingText: editingText) else { return false }
+      if shortcut == .undo {
+        NotificationCenter.default.post(name: .appShortcut, object: shortcut)
+        return true
+      }
       for view in candidates where view.handle?(shortcut) == true { return true }
       return false
     }

@@ -43,7 +43,7 @@ func mapUpdateTask(value tracker_genapi.UpdateTaskIn) (models.UpdateTaskIn, erro
 		mode = pointer.To(parsed)
 	}
 
-	in := models.UpdateTaskIn{IsProject: value.IsProject, Title: value.Title, Description: value.Description, ListID: value.ListID, ParentID: value.ParentID, DeadlineDate: value.DeadlineDate, DeadlineAt: value.DeadlineAt, PlannedAt: value.PlannedAt, DurationMinutes: value.DurationMinutes, ReminderMode: mode, ReminderMinutesBefore: value.ReminderMinutesBefore, TagIDs: value.TagIDs, ClearDescription: pointer.Get(value.ClearDescription), ClearListID: pointer.Get(value.ClearListID), ClearParentID: pointer.Get(value.ClearParentID), ClearDeadlineDate: pointer.Get(value.ClearDeadlineDate), ClearDeadlineAt: pointer.Get(value.ClearDeadlineAt), ClearPlannedAt: pointer.Get(value.ClearPlannedAt), ClearDurationMinutes: pointer.Get(value.ClearDurationMinutes)}
+	in := models.UpdateTaskIn{InheritProjectTags: value.InheritProjectTags, IsProject: value.IsProject, Title: value.Title, Description: value.Description, ListID: value.ListID, ParentID: value.ParentID, DeadlineDate: value.DeadlineDate, DeadlineAt: value.DeadlineAt, PlannedAt: value.PlannedAt, DurationMinutes: value.DurationMinutes, ReminderMode: mode, ReminderMinutesBefore: value.ReminderMinutesBefore, TagIDs: value.TagIDs, ClearDescription: pointer.Get(value.ClearDescription), ClearListID: pointer.Get(value.ClearListID), ClearParentID: pointer.Get(value.ClearParentID), ClearDeadlineDate: pointer.Get(value.ClearDeadlineDate), ClearDeadlineAt: pointer.Get(value.ClearDeadlineAt), ClearPlannedAt: pointer.Get(value.ClearPlannedAt), ClearDurationMinutes: pointer.Get(value.ClearDurationMinutes)}
 	if in.ClearDescription && in.Description != nil {
 		return in, apperr.ErrValidation()
 	}

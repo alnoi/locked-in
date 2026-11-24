@@ -30,6 +30,8 @@ public final class AppModel {
   public var errorMessage: String?
   public var lastRefresh: Date?
   public var legacySource: (() throws -> [LegacyTask])?
+  let actionHistory = ActionHistory()
+  var undoRevision = 0
   private var repository: (any TrackerRepository)?
   @ObservationIgnored private var widgetObserver: WidgetCommandObserver?
   private var started = false
@@ -135,7 +137,7 @@ public final class AppModel {
     }
   }
   public func connect(_ proposed: ConnectionSettings) async throws {
-    guard !isMutating, !isLoading else {
+    guard !isMutating, !isLoading, !actionHistory.isUndoing else {
       throw TrackerError.conflict("Дождись завершения текущей операции.")
     }
     isLoading = true
@@ -185,6 +187,10 @@ public final class AppModel {
   }
 
   @discardableResult public func mutate(_ change: Change) async throws -> ChangeResult {
+    guard !actionHistory.isUndoing || UndoGrouping.replaying
+      || UndoGrouping.id.map({ actionHistory.activeGroups.contains($0) }) == true else {
+      throw TrackerError.conflict("Дождись завершения отмены действия.")
+    }
     guard let repository, hasLoaded else {
       throw TrackerError.validation("Сначала выбери доступное хранилище.")
     }
@@ -205,7 +211,12 @@ public final class AppModel {
       }
     }
     do {
+      prepareActionHistory()
+      let before = snapshot
+      let previousTaskOrder = taskOrderIDs
+      let previousListOrder = listOrderIDs
       let result = try await repository.apply(change)
+      actionHistory.record(result, before: before, taskOrder: previousTaskOrder, listOrder: previousListOrder)
       mutationRevision += 1
       if let sync = repository as? OfflineTaskRepository { receiveSyncStatus(await sync.status()) }
       withAnimation(.snappy(duration: 0.25)) {
@@ -261,11 +272,13 @@ public final class AppModel {
     let group = [root] + snapshot.tasks.filter { $0.parentID == root.id }
     Task {
       do {
-        for task in group {
-          var input = TaskInput(task)
-          input.listID = listID
-          if !includingProject && selected.parentID != nil { input.parentID = nil }
-          try await mutate(.task(task.id, input))
+        try await groupedUndo {
+          for task in group {
+            var input = TaskInput(task)
+            input.listID = listID
+            if !includingProject && selected.parentID != nil { input.parentID = nil }
+            try await mutate(.task(task.id, input))
+          }
         }
       } catch { errorMessage = friendly(error) }
     }
@@ -287,25 +300,27 @@ public final class AppModel {
 
   func dissolveProjectAndWait(_ id: UUID) async throws {
     guard canEdit, let project = snapshot.tasks.first(where: { $0.id == id }) else { return }
-    let children = orderedTasks(snapshot.tasks.filter { $0.parentID == id })
-    let childIDs = Set(children.map(\.id))
-    var order = orderedTasks(snapshot.tasks).map(\.id).filter { !childIDs.contains($0) }
-    if let index = order.firstIndex(of: id) {
-      order.insert(contentsOf: children.map(\.id), at: index + 1)
-    }
-    saveTaskOrder(order)
-    for child in children {
-      guard let current = snapshot.tasks.first(where: { $0.id == child.id }),
-        current.parentID == id else { continue }
-      var input = TaskInput(current)
-      input.parentID = nil
-      input.listID = project.listID
-      try await mutate(.task(child.id, input))
-    }
-    if let current = snapshot.tasks.first(where: { $0.id == id }) {
-      var input = TaskInput(current)
-      input.isProject = false
-      try await mutate(.task(id, input))
+    try await groupedUndo {
+      let children = orderedTasks(snapshot.tasks.filter { $0.parentID == id })
+      let childIDs = Set(children.map(\.id))
+      var order = orderedTasks(snapshot.tasks).map(\.id).filter { !childIDs.contains($0) }
+      if let index = order.firstIndex(of: id) {
+        order.insert(contentsOf: children.map(\.id), at: index + 1)
+      }
+      saveTaskOrder(order)
+      for child in children {
+        guard let current = snapshot.tasks.first(where: { $0.id == child.id }),
+          current.parentID == id else { continue }
+        var input = TaskInput(current)
+        input.parentID = nil
+        input.listID = project.listID
+        try await mutate(.task(child.id, input))
+      }
+      if let current = snapshot.tasks.first(where: { $0.id == id }) {
+        var input = TaskInput(current)
+        input.isProject = false
+        try await mutate(.task(id, input))
+      }
     }
   }
 
@@ -343,6 +358,10 @@ public final class AppModel {
     let current = TaskOrderPreferences.orderedIDs(
       snapshot.tasks, space: settings.identity, userID: snapshot.user.id)
     let next = TaskOrderPreferences.merging(visible, into: current)
+    if next != current {
+      prepareActionHistory()
+      actionHistory.record([.taskOrder(current)])
+    }
     TaskOrderPreferences.save(next, space: settings.identity, userID: snapshot.user.id)
     withAnimation(.snappy(duration: 0.12, extraBounce: 0)) { taskOrderIDs = next }
   }
@@ -358,6 +377,10 @@ public final class AppModel {
     let selected = Set(visible)
     var replacement = visible.makeIterator()
     ids = ids.map { selected.contains($0) ? replacement.next()! : $0 }
+    if ids != listOrderIDs {
+      prepareActionHistory()
+      actionHistory.record([.listOrder(listOrderIDs)])
+    }
     ListOrderPreferences.saveIDs(ids, space: settings.identity, userID: snapshot.user.id)
     withAnimation(.snappy(duration: 0.12, extraBounce: 0)) { applyLocalListOrder() }
     cacheSnapshot()
@@ -372,6 +395,10 @@ public final class AppModel {
     ids.removeAll { $0 == id }
     let index = before.flatMap { ids.firstIndex(of: $0) } ?? ids.count
     ids.insert(id, at: index)
+    if ids != listOrderIDs {
+      prepareActionHistory()
+      actionHistory.record([.listOrder(listOrderIDs)])
+    }
     ListOrderPreferences.saveIDs(ids, space: settings.identity, userID: snapshot.user.id)
     withAnimation(.snappy(duration: 0.25)) { applyLocalListOrder() }
     cacheSnapshot()
@@ -447,7 +474,9 @@ public final class AppModel {
     taskOrderIDs = TaskOrderPreferences.orderedIDs(
       snapshot.tasks, space: settings.identity, userID: snapshot.user.id)
 
-    ListOrderPreferences.apply(to: &snapshot, space: settings.identity)
+    var orderedSnapshot = snapshot
+    ListOrderPreferences.apply(to: &orderedSnapshot, space: settings.identity)
+    snapshot = orderedSnapshot
   }
   private var cacheURL: URL {
     let key = Data(settings.identity.utf8).base64EncodedString().replacingOccurrences(
@@ -480,7 +509,9 @@ public final class AppModel {
           try store.remove(command); continue
         }
         let superseded = command.acknowledgedTask.map { task.updatedAt > $0.updatedAt } ?? false
-        if !task.completed && !superseded { try await mutate(.completed(task.id, true)) }
+        if !task.completed && !superseded {
+          _ = try await UndoGrouping.$replaying.withValue(true) { try await mutate(.completed(task.id, true)) }
+        }
         try store.remove(command)
       }
     } catch { syncWarning = "Не удалось применить изменение из виджета: " + friendly(error) }

@@ -8,6 +8,7 @@ import (
 )
 
 type boardRepository interface {
+	RestoreBoard(context.Context, *uuid.UUID, uuid.UUID) error
 	EnsureGeneralBoard(context.Context, *uuid.UUID) error
 	GetBoards(context.Context, models.GetBoardsFilters) ([]models.Board, error)
 	GetBoardsCount(context.Context, models.GetBoardsFilters) (int, error)
@@ -16,6 +17,7 @@ type boardRepository interface {
 	SoftDeleteBoard(context.Context, models.DeleteBoardFilters) (int64, error)
 }
 type listRepository interface {
+	RestoreList(context.Context, *uuid.UUID, uuid.UUID) error
 	GetLists(context.Context, models.GetListsFilters) ([]models.List, error)
 	GetListsCount(context.Context, models.GetListsFilters) (int, error)
 	CreateList(context.Context, *models.CreateListIn) (models.List, error)
@@ -23,6 +25,7 @@ type listRepository interface {
 	SoftDeleteList(context.Context, models.DeleteListFilters) (int64, error)
 }
 type tagRepository interface {
+	RestoreTag(context.Context, *uuid.UUID, uuid.UUID) error
 	GetTags(context.Context, models.GetTagsFilters) ([]models.Tag, error)
 	GetTagsCount(context.Context, models.GetTagsFilters) (int, error)
 	CreateTag(context.Context, *models.CreateTagIn) (models.Tag, error)
@@ -30,6 +33,7 @@ type tagRepository interface {
 	SoftDeleteTag(context.Context, models.DeleteTagFilters) (int64, error)
 }
 type taskRepository interface {
+	RestoreTask(context.Context, *uuid.UUID, uuid.UUID) error
 	GetTasks(context.Context, models.GetTasksFilters) ([]models.Task, error)
 	GetTasksCount(context.Context, models.GetTasksFilters) (int, error)
 	CreateTask(context.Context, *models.CreateTaskIn) (models.Task, error)
@@ -38,6 +42,7 @@ type taskRepository interface {
 	SetTaskCompleted(context.Context, *uuid.UUID, *models.SetTaskCompletedIn) (models.Task, error)
 }
 type commentRepository interface {
+	RestoreComment(context.Context, *uuid.UUID, uuid.UUID) error
 	GetComments(context.Context, models.GetCommentsFilters) ([]models.Comment, error)
 	GetCommentsCount(context.Context, models.GetCommentsFilters) (int, error)
 	CreateComment(context.Context, *models.CreateCommentIn) (models.Comment, error)

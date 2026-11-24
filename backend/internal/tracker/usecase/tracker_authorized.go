@@ -167,3 +167,38 @@ func (u *AuthorizedUseCase) SetTaskCompleted(ctx context.Context, actor identity
 	}
 	return u.core.SetTaskCompleted(ctx, actor.Scope(), in)
 }
+
+func (u *AuthorizedUseCase) RestoreTask(ctx context.Context, actor identity.Actor, id uuid.UUID) (models.Task, error) {
+	if err := actor.Require(); err != nil {
+		return models.Task{}, err
+	}
+	return u.core.RestoreTask(ctx, actor.Scope(), id)
+}
+
+func (u *AuthorizedUseCase) RestoreBoard(ctx context.Context, actor identity.Actor, id uuid.UUID) (models.Board, error) {
+	if err := actor.Require(); err != nil {
+		return models.Board{}, err
+	}
+	return u.core.RestoreBoard(ctx, actor.Scope(), id)
+}
+
+func (u *AuthorizedUseCase) RestoreList(ctx context.Context, actor identity.Actor, id uuid.UUID) (models.List, error) {
+	if err := actor.Require(); err != nil {
+		return models.List{}, err
+	}
+	return u.core.RestoreList(ctx, actor.Scope(), id)
+}
+
+func (u *AuthorizedUseCase) RestoreTag(ctx context.Context, actor identity.Actor, id uuid.UUID) (models.Tag, error) {
+	if err := actor.Require(); err != nil {
+		return models.Tag{}, err
+	}
+	return u.core.RestoreTag(ctx, actor.Scope(), id)
+}
+
+func (u *AuthorizedUseCase) RestoreComment(ctx context.Context, actor identity.Actor, id uuid.UUID) (models.Comment, error) {
+	if err := actor.Require(); err != nil {
+		return models.Comment{}, err
+	}
+	return u.core.RestoreComment(ctx, actor.Scope(), id)
+}

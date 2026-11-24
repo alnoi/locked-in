@@ -93,3 +93,22 @@ func (u *UseCase) validateComment(ctx context.Context, scope *uuid.UUID, value m
 	_, err := u.GetTask(ctx, scope, value.TaskID)
 	return err
 }
+
+func (u *UseCase) RestoreComment(ctx context.Context, scope *uuid.UUID, id uuid.UUID) (models.Comment, error) {
+	var result models.Comment
+	err := u.mutate(ctx, scope, func(ctx context.Context) error {
+		if err := u.dependencies.Comments.RestoreComment(ctx, scope, id); err != nil {
+			return err
+		}
+		value, err := u.GetComment(ctx, scope, id)
+		if err != nil {
+			return err
+		}
+		if err := u.validateComment(ctx, scope, value); err != nil {
+			return err
+		}
+		result = value
+		return nil
+	})
+	return result, err
+}

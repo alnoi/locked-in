@@ -89,3 +89,12 @@ func (h *Handlers) ReopenTask(c *gin.Context, id uuid.UUID) {
 	}
 	c.JSON(200, mapTaskToOut(out))
 }
+
+func (h *Handlers) RestoreTask(c *gin.Context, id uuid.UUID) {
+	out, err := h.usecase.RestoreTask(c.Request.Context(), h.actor(), id)
+	if err != nil {
+		apperr.WriteError(c, err)
+		return
+	}
+	c.JSON(200, mapTaskToOut(out))
+}

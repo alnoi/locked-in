@@ -107,3 +107,22 @@ func (u *UseCase) validateTag(ctx context.Context, scope *uuid.UUID, value model
 	}
 	return models.ValidateColor(value.Color)
 }
+
+func (u *UseCase) RestoreTag(ctx context.Context, scope *uuid.UUID, id uuid.UUID) (models.Tag, error) {
+	var result models.Tag
+	err := u.mutate(ctx, scope, func(ctx context.Context) error {
+		if err := u.dependencies.Tags.RestoreTag(ctx, scope, id); err != nil {
+			return err
+		}
+		value, err := u.GetTag(ctx, scope, id)
+		if err != nil {
+			return err
+		}
+		if err := u.validateTag(ctx, scope, value); err != nil {
+			return err
+		}
+		result = value
+		return nil
+	})
+	return result, err
+}

@@ -78,3 +78,17 @@ func (r *Repository) EnsureGeneralBoard(ctx context.Context, scope *uuid.UUID) e
 	}
 	return nil
 }
+
+func (r *Repository) RestoreBoard(ctx context.Context, scope *uuid.UUID, id uuid.UUID) error {
+	if scope == nil {
+		return apperr.ErrNotFound()
+	}
+	tag, err := r.getter.Get(ctx).Exec(ctx, restoreQuery, pgx.NamedArgs{"id": id, "scope": scope})
+	if err != nil {
+		return fmt.Errorf("RestoreBoard: %w", apperr.HandleConstraintViolation(err))
+	}
+	if tag.RowsAffected() == 0 {
+		return apperr.ErrNotFound()
+	}
+	return nil
+}

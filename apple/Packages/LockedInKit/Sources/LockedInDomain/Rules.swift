@@ -13,6 +13,16 @@ public enum TrackerError: LocalizedError, Equatable {
 }
 
 public enum TrackerRules {
+  public static func inheritingProjectTags(_ input: TaskInput, id: UUID?, in snapshot: Snapshot) -> TaskInput {
+    guard input.inheritProjectTags != false, let parentID = input.parentID,
+      snapshot.tasks.first(where: { $0.id == id })?.parentID != parentID,
+      let parent = snapshot.tasks.first(where: { $0.id == parentID })
+    else { return input }
+    var result = input
+    var tags = Set(input.tagIDs)
+    result.tagIDs.append(contentsOf: parent.tagIDs.filter { tags.insert($0).inserted })
+    return result
+  }
   public static func validate(_ input: TaskInput, id: UUID?, in snapshot: Snapshot) throws {
     try name(input.title)
     if let offset = input.reminderMinutesBefore, !(0...10080).contains(offset) {

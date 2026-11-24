@@ -171,8 +171,10 @@ struct BoardScreen: View {
           localDrop: {
             if let source = taskDragSession.source {
               let task = model.snapshot.tasks.first { $0.id == source }
-              model.move(source, to: list?.id, includingProject: task?.parentID == nil)
-              model.saveTaskOrder(taskDragSession.order.filter { $0 != source } + [source])
+              model.groupedUndo {
+                model.move(source, to: list?.id, includingProject: task?.parentID == nil)
+                model.saveTaskOrder(taskDragSession.order.filter { $0 != source } + [source])
+              }
               taskDragSession.finishDrop()
               return true
             }
@@ -252,8 +254,10 @@ private struct BoardColumn: View {
         localDrop: {
           if let source = taskDragSession.source {
             let task = model.snapshot.tasks.first { $0.id == source }
-            model.move(source, to: listID, includingProject: task?.parentID == nil)
-            model.saveTaskOrder(taskDragSession.order.filter { $0 != source } + [source])
+            model.groupedUndo {
+              model.move(source, to: listID, includingProject: task?.parentID == nil)
+              model.saveTaskOrder(taskDragSession.order.filter { $0 != source } + [source])
+            }
             taskDragSession.finishDrop()
             return true
           }

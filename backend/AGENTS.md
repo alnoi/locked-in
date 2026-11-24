@@ -44,3 +44,9 @@
 - Подробности: ../docs/entities.md, ../docs/architecture.md, README.md.
 
 - Пустой проект: tasks.is_project / API isProject. Проект определяется флагом или наличием детей (совместимость старых данных); преобразование выставляет флаг без создания подзадачи, расформирование снимает флаг после отделения детей.
+
+- При создании подзадачи или переносе в другой проект теги проекта добавляются к собственным тегам без дублей (на клиенте, включая офлайн, и на сервере). Это разовое копирование: последующие правки тегов независимы.
+
+- POST /{tasks,boards,lists,tags,comments}/{id}/restore восстанавливает запись для Cmd+Z в транзакции с проверкой владельца и валидацией связей; ID/createdAt сохраняются. Повтор безопасен. PATCH tasks: inheritProjectTags=false применяется клиентом для точного возврата предыдущих тегов при отмене перемещения.
+
+- CI/CD: .github/workflows/backend.yml — Docker build в PR, публикация GHCR и автодеплой main на Linux/amd64. Production Compose/deploy.sh в ../deploy/production/, серверная папка ~/trackit; контейнер track-it-backend, API только loopback через host network. Деплой по digest, pg_dump перед миграциями, healthcheck 204, rollback образа/Compose; БД автоматически не откатывать. Детали ../docs/deployment.md.

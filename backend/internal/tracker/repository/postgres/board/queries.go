@@ -142,3 +142,11 @@ INSERT INTO
 VALUES
   (@scope, 'Общая доска', 'general')
 ON CONFLICT (owner_id, code) DO NOTHING`
+
+const restoreQuery = `-- restoreBoard
+UPDATE boards
+SET
+  deleted_at = NULL
+WHERE
+  id = @id
+  AND owner_id = @scope`

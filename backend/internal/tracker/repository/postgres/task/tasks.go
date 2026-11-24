@@ -74,3 +74,17 @@ func (r *Repository) write(ctx context.Context, query string, args pgx.NamedArgs
 func (r *Repository) SetTaskCompleted(ctx context.Context, scope *uuid.UUID, in *models.SetTaskCompletedIn) (models.Task, error) {
 	return r.write(ctx, completeQuery, pgx.NamedArgs{"scope": scope, "id": in.ID, "completed": in.Completed})
 }
+
+func (r *Repository) RestoreTask(ctx context.Context, scope *uuid.UUID, id uuid.UUID) error {
+	if scope == nil {
+		return apperr.ErrNotFound()
+	}
+	tag, err := r.getter.Get(ctx).Exec(ctx, restoreQuery, pgx.NamedArgs{"id": id, "scope": scope})
+	if err != nil {
+		return fmt.Errorf("RestoreTask: %w", apperr.HandleConstraintViolation(err))
+	}
+	if tag.RowsAffected() == 0 {
+		return apperr.ErrNotFound()
+	}
+	return nil
+}

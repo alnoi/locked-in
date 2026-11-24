@@ -30,6 +30,15 @@ public struct HTTPRepository: TaskSyncRemote {
   }
   public func apply(_ change: Change) async throws -> ChangeResult {
     switch change {
+    case .restore(let record):
+      switch record {
+      case .task(let value): return .task(try await request("tasks/\(value.id.uuidString)/restore", method: "POST"))
+      case .board(let value): return .board(try await request("boards/\(value.id.uuidString)/restore", method: "POST"))
+      case .list(let value): return .list(try await request("lists/\(value.id.uuidString)/restore", method: "POST"))
+      case .tag(let value): return .tag(try await request("tags/\(value.id.uuidString)/restore", method: "POST"))
+      case .comment(let value): return .comment(try await request("comments/\(value.id.uuidString)/restore", method: "POST"))
+      case .deleted: throw TrackerError.validation("Невозможно восстановить удаление без записи.")
+      }
     case .task(let id, let input):
       var body = try object(input)
       if id != nil {

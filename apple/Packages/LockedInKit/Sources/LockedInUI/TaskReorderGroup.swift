@@ -86,11 +86,9 @@ struct TaskReorderGroup: View {
     ), titleVisibility: .visible) {
       if let project = deletingProject {
         Button("Удалить", role: .destructive) {
-          let children = model.snapshot.tasks.filter { $0.parentID == project.id }
           Task {
             do {
-              for child in children { try await model.mutate(.deleteTask(child.id)) }
-              try await model.mutate(.deleteTask(project.id))
+              try await model.deleteProjectAndWait(project.id)
             } catch { model.errorMessage = model.friendly(error) }
           }
         }

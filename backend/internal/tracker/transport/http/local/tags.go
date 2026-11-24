@@ -72,3 +72,12 @@ func (h *Handlers) DeleteTag(c *gin.Context, id uuid.UUID) {
 	}
 	c.Status(204)
 }
+
+func (h *Handlers) RestoreTag(c *gin.Context, id uuid.UUID) {
+	out, err := h.usecase.RestoreTag(c.Request.Context(), h.actor(), id)
+	if err != nil {
+		apperr.WriteError(c, err)
+		return
+	}
+	c.JSON(200, mapTagToOut(out))
+}

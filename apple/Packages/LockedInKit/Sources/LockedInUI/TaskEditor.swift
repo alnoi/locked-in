@@ -182,6 +182,7 @@ struct TaskEditor: View {
       }.padding(14)
     }
     .modifier(TaskInspectorGlass())
+    .onChange(of: model.undoRevision) { _, _ in reloadAfterUndo() }
     .onChange(of: hasDeadline) { _, enabled in if !enabled { hasDeadlineTime = false } }
     .confirmationDialog("Удалить задачу?", isPresented: $confirmDelete, titleVisibility: .visible) {
       Button("Удалить", role: .destructive) {
@@ -437,6 +438,27 @@ struct TaskEditor: View {
       dismissEditor()
     } catch { errorMessage = error.localizedDescription }
   }
+  private func reloadAfterUndo() {
+    guard let id = presentation.taskID else { return }
+    guard let task = model.snapshot.tasks.first(where: { $0.id == id }) else {
+      dismissEditor()
+      return
+    }
+    let value = TaskInput(task)
+    guard value != savedInput else { return }
+    input = value
+    savedInput = value
+    links = TaskLinks(stored: value.description)
+    hasDeadline = value.deadlineAt != nil || value.deadlineDate != nil
+    hasDeadlineTime = value.deadlineAt != nil
+    deadline = value.deadlineAt ?? value.deadlineDate.flatMap(DateOnly.parse) ?? .now
+    hasPlan = value.plannedAt != nil
+    planned = value.plannedAt ?? .now
+    hasDuration = value.durationMinutes != nil
+    duration = value.durationMinutes ?? 60
+    reminderMode = value.reminderMode ?? .none
+    reminderMinutesBefore = value.reminderMinutesBefore ?? 0
+  }
   private func handleShortcut(_ shortcut: AppShortcut) -> Bool {
     switch shortcut {
     case .submit:
@@ -455,7 +477,7 @@ struct TaskEditor: View {
         hasPlan = false
         input.plannedAt = nil
       } else { Task { await taskAction(shortcut) } }
-    case .complete, .delete, .project:
+    case .complete, .delete, .project, .togglePlan:
       if presentation.taskID != nil { Task { await taskAction(shortcut) } }
     default: return false
     }
@@ -480,29 +502,44 @@ struct TaskEditor: View {
     do {
       switch action {
       case .complete:
-        try await persistTask(onlyIfChanged: true)
-        try await model.mutate(.completed(id, true))
+        try await model.groupedUndo {
+          try await persistTask(onlyIfChanged: true)
+          try await model.mutate(.completed(id, true))
+        }
         dismissEditor()
       case .delete:
-        for task in model.snapshot.tasks.filter({ $0.parentID == id }) {
-          try await model.mutate(.deleteTask(task.id))
-        }
-        try await model.mutate(.deleteTask(id))
+        try await model.deleteProjectAndWait(id)
         dismissEditor()
-      case .unplan:
+      case .unplan, .togglePlan:
         guard let task = model.snapshot.tasks.first(where: { $0.id == id }) else { throw TrackerError.notFound }
-        if task.plannedAt != nil {
-          try await model.mutate(.task(id, CalendarTaskNavigation.unschedule(task)))
+        if action == .unplan || hasPlan {
+          if task.plannedAt != nil {
+            try await model.mutate(.task(id, CalendarTaskNavigation.unschedule(task)))
+          }
+          hasPlan = false
+          input.plannedAt = nil
+          savedInput.plannedAt = nil
+          if action == .togglePlan && saveOnOutside { dismissEditor() }
+        } else {
+          let date = Date.now
+          try await model.groupedUndo {
+            try await persistTask(onlyIfChanged: true)
+            guard let current = model.snapshot.tasks.first(where: { $0.id == id }) else { throw TrackerError.notFound }
+            if let value = CalendarTaskNavigation.planIfNeeded(current, now: date) {
+              try await model.mutate(.task(id, value))
+            }
+          }
+          dismissEditor()
+          model.calendarFocus = CalendarTaskFocus(taskID: id, date: date)
         }
-        hasPlan = false
-        input.plannedAt = nil
-        savedInput.plannedAt = nil
       case .project:
         guard input.parentID == nil else { return }
         let isProject = input.isProject == true || model.snapshot.tasks.contains { $0.parentID == id }
         if isProject {
-          try await persistTask(onlyIfChanged: true)
-          try await model.dissolveProjectAndWait(id)
+          try await model.groupedUndo {
+            try await persistTask(onlyIfChanged: true)
+            try await model.dissolveProjectAndWait(id)
+          }
           input.isProject = false
           savedInput.isProject = false
         } else {

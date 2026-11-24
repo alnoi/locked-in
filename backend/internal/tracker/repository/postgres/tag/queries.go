@@ -99,3 +99,11 @@ WHERE
   id = @id
   AND owner_id = @scope
   AND deleted_at IS NULL`
+
+const restoreQuery = `-- restoreTag
+UPDATE tags
+SET
+  deleted_at = NULL
+WHERE
+  id = @id
+  AND owner_id = @scope`

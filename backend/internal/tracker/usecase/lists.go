@@ -111,3 +111,22 @@ func (u *UseCase) validateList(ctx context.Context, scope *uuid.UUID, value mode
 	}
 	return nil
 }
+
+func (u *UseCase) RestoreList(ctx context.Context, scope *uuid.UUID, id uuid.UUID) (models.List, error) {
+	var result models.List
+	err := u.mutate(ctx, scope, func(ctx context.Context) error {
+		if err := u.dependencies.Lists.RestoreList(ctx, scope, id); err != nil {
+			return err
+		}
+		value, err := u.GetList(ctx, scope, id)
+		if err != nil {
+			return err
+		}
+		if err := u.validateList(ctx, scope, value); err != nil {
+			return err
+		}
+		result = value
+		return nil
+	})
+	return result, err
+}

@@ -168,7 +168,8 @@ public struct LockedInRootView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .appShortcut)) { notification in
       guard let shortcut = notification.object as? AppShortcut else { return }
-      if shortcut == .finishSectionSwitch { navigationHistory.finishSwitching() }
+      if shortcut == .undo { model.undoLastAction() }
+      else if shortcut == .finishSectionSwitch { navigationHistory.finishSwitching() }
       else if taskSheetActive && shortcut != .sidebar { pendingShortcut = shortcut }
       else { _ = handleShortcut(shortcut) }
     }
@@ -423,6 +424,9 @@ public struct LockedInRootView: View {
   }
   private func handleShortcut(_ shortcut: AppShortcut) -> Bool {
     switch shortcut {
+    case .undo:
+      model.undoLastAction()
+      return true
     case .search:
       searchPresented = false
       DispatchQueue.main.async { searchPresented = true }

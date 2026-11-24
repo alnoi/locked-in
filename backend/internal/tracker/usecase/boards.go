@@ -166,3 +166,22 @@ func (u *UseCase) boardSelection(ctx context.Context, scope *uuid.UUID, id uuid.
 	}
 	return domain.ResolveBoardSelection(id, values)
 }
+
+func (u *UseCase) RestoreBoard(ctx context.Context, scope *uuid.UUID, id uuid.UUID) (models.Board, error) {
+	var result models.Board
+	err := u.mutate(ctx, scope, func(ctx context.Context) error {
+		if err := u.dependencies.Boards.RestoreBoard(ctx, scope, id); err != nil {
+			return err
+		}
+		value, err := u.GetBoard(ctx, scope, id)
+		if err != nil {
+			return err
+		}
+		if err := u.validateBoard(ctx, scope, value); err != nil {
+			return err
+		}
+		result = value
+		return nil
+	})
+	return result, err
+}

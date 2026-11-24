@@ -43,6 +43,7 @@ public struct TaskRecord: Codable, Identifiable, Hashable, Sendable {
 }
 
 public struct TaskInput: Codable, Equatable, Sendable {
+  public var inheritProjectTags: Bool?
   public var title: String
   public var description: String?
   public var listID: UUID?
@@ -271,6 +272,7 @@ public struct Snapshot: Codable, Sendable {
 }
 
 public enum Change: Sendable {
+  case restore(ChangeResult)
   case task(UUID?, TaskInput)
   case completed(UUID, Bool)
   case board(UUID?, BoardInput)

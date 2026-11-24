@@ -276,3 +276,11 @@ RETURNING
     ORDER BY
       link.tag_id
   ) AS tag_ids`
+
+const restoreQuery = `-- restoreTask
+UPDATE tasks
+SET
+  deleted_at = NULL
+WHERE
+  id = @id
+  AND owner_id = @scope`

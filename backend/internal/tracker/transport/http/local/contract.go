@@ -9,6 +9,11 @@ import (
 )
 
 type trackerUseCase interface {
+	RestoreComment(context.Context, identity.Actor, uuid.UUID) (models.Comment, error)
+	RestoreTag(context.Context, identity.Actor, uuid.UUID) (models.Tag, error)
+	RestoreList(context.Context, identity.Actor, uuid.UUID) (models.List, error)
+	RestoreBoard(context.Context, identity.Actor, uuid.UUID) (models.Board, error)
+	RestoreTask(context.Context, identity.Actor, uuid.UUID) (models.Task, error)
 	GetBoards(context.Context, identity.Actor, models.GetBoardsFilters) (models.GetBoardsOut, error)
 	GetBoard(context.Context, identity.Actor, uuid.UUID) (models.Board, error)
 	CreateBoard(context.Context, identity.Actor, *models.CreateBoardIn) (models.Board, error)

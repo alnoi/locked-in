@@ -100,3 +100,11 @@ WHERE
   id = @id
   AND owner_id = @scope
   AND deleted_at IS NULL`
+
+const restoreQuery = `-- restoreComment
+UPDATE comments
+SET
+  deleted_at = NULL
+WHERE
+  id = @id
+  AND owner_id = @scope`

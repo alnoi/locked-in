@@ -8,6 +8,9 @@ public actor OfflineTaskRepository: TrackerRepository {
     var base: TaskRecord?
     var isNew: Bool
     var deleted = false
+    var restoring: Bool?
+    var inheritedTagsDisabled: Bool?
+    var restoredComments: [CommentRecord]?
   }
   private struct Archive: Codable {
     var snapshot: Snapshot
@@ -81,8 +84,18 @@ public actor OfflineTaskRepository: TrackerRepository {
     let task: TaskRecord
     var isNew = false
     var deleted = false
+    var restoring = false
+    var inheritedTagsDisabled = false
     switch change {
+    case .restore(.task(let restored)):
+      try TrackerRules.validate(TaskInput(restored), id: restored.id, in: snapshot)
+      task = restored
+      restoring = true
+      result = .task(restored)
+
     case .task(let id, let input):
+      inheritedTagsDisabled = input.inheritProjectTags == false
+      let input = TrackerRules.inheritingProjectTags(input, id: id, in: snapshot)
       try TrackerRules.validate(input, id: id, in: snapshot)
       let existing = snapshot.tasks.first { $0.id == id }
       if id != nil && existing == nil { throw TrackerError.notFound }
@@ -90,6 +103,21 @@ public actor OfflineTaskRepository: TrackerRepository {
         createdAt: existing?.createdAt ?? .now)
       isNew = id == nil
       result = .task(task)
+    case .restore(.comment(let comment)):
+      if let index = next.pending.firstIndex(where: { $0.task.id == comment.taskID && $0.restoring == true }) {
+        var comments = next.pending[index].restoredComments ?? []
+        comments.removeAll { $0.id == comment.id }
+        comments.append(comment)
+        next.pending[index].restoredComments = comments
+        next.snapshot.receive(.comment(comment))
+        try save(next)
+        return .comment(comment)
+      }
+      guard !offline else { throw SyncConnectionError.connectionRequired }
+      let response = try await remote.apply(change)
+      next.snapshot.receive(response)
+      try save(next)
+      return response
     case .completed(let id, let completed):
       guard var current = snapshot.tasks.first(where: { $0.id == id }) else { throw TrackerError.notFound }
       current.completed = completed; current.updatedAt = .now
@@ -133,8 +161,10 @@ public actor OfflineTaskRepository: TrackerRepository {
       next.pending[index].version = UUID()
       next.pending[index].task = task
       next.pending[index].deleted = deleted
+      if restoring { next.pending[index].restoring = true }
+      next.pending[index].inheritedTagsDisabled = inheritedTagsDisabled
     } else {
-      next.pending.append(Pending(task: task, base: snapshot.tasks.first { $0.id == task.id }, isNew: isNew, deleted: deleted))
+      next.pending.append(Pending(task: task, base: snapshot.tasks.first { $0.id == task.id }, isNew: isNew, deleted: deleted, restoring: restoring, inheritedTagsDisabled: inheritedTagsDisabled))
     }
     next.snapshot.receive(result)
     try save(next)
@@ -149,10 +179,19 @@ public actor OfflineTaskRepository: TrackerRepository {
       }
       result = .deleted(.task, pending.task.id)
     } else {
+      if pending.restoring == true && !pending.isNew {
+        do { _ = try await remote.apply(.restore(.task(pending.task))) }
+        catch {
+          guard let tracker = error as? TrackerError, case .notFound = tracker else { throw error }
+          _ = try await remote.createTask(id: pending.task.id, input: TaskInput(pending.task))
+        }
+      }
       if pending.isNew { _ = try await remote.createTask(id: pending.task.id, input: TaskInput(pending.task)) }
       let serverTask = serverTasks[pending.task.id]
       let desired = TaskSyncMerge.merging(local: pending.task, base: pending.base, remote: serverTask)
-      guard case .task(var saved) = try await remote.apply(.task(pending.task.id, TaskInput(desired))) else {
+      var input = TaskInput(desired)
+      if pending.inheritedTagsDisabled == true { input.inheritProjectTags = false }
+      guard case .task(var saved) = try await remote.apply(.task(pending.task.id, input)) else {
         throw TrackerError.validation("Сервер вернул неожиданный ответ при сохранении задачи.")
       }
       if saved.completed != desired.completed {
@@ -176,6 +215,9 @@ public actor OfflineTaskRepository: TrackerRepository {
   private func overlayPending(_ value: inout Archive) {
     for pending in value.pending {
       value.snapshot.receive(pending.deleted ? .deleted(.task, pending.task.id) : .task(pending.task))
+      if !pending.deleted {
+        for comment in pending.restoredComments ?? [] { value.snapshot.receive(.comment(comment)) }
+      }
     }
   }
   private func save(_ value: Archive) throws {

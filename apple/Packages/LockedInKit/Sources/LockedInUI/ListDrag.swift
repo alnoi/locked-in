@@ -241,15 +241,17 @@ struct TaskPlacementDropDelegate: DropDelegate {
     if let index = order.firstIndex(of: value.target) {
       order.insert(source, at: index + (value.after ? 1 : 0))
     } else { order.append(source) }
-    model.saveTaskOrder(order)
-    if task.parentID != value.parentID || task.listID != value.listID {
-      var input = TaskInput(task)
-      input.parentID = value.parentID
-      input.listID = value.listID
-      if value.parentID == nil && model.snapshot.tasks.contains(where: { $0.parentID == source }) {
-        model.move(source, to: value.listID)
-      } else {
-        model.perform(.task(task.id, input))
+    model.groupedUndo {
+      model.saveTaskOrder(order)
+      if task.parentID != value.parentID || task.listID != value.listID {
+        var input = TaskInput(task)
+        input.parentID = value.parentID
+        input.listID = value.listID
+        if value.parentID == nil && model.snapshot.tasks.contains(where: { $0.parentID == source }) {
+          model.move(source, to: value.listID)
+        } else {
+          model.perform(.task(task.id, input))
+        }
       }
     }
     session.finishDrop()

@@ -66,6 +66,13 @@ func (u *UseCase) CreateTask(ctx context.Context, scope *uuid.UUID, in *models.C
 				return nil
 			}
 		}
+		if in.ParentID != nil {
+			parent, err := u.GetTask(ctx, scope, *in.ParentID)
+			if err != nil {
+				return err
+			}
+			in.TagIDs = domain.InheritProjectTags(in.TagIDs, parent.TagIDs)
+		}
 		value := models.Task{IsProject: in.IsProject, Title: in.Title, Description: in.Description, ListID: in.ListID, ParentID: in.ParentID, DeadlineDate: in.DeadlineDate, DeadlineAt: in.DeadlineAt, PlannedAt: in.PlannedAt, DurationMinutes: in.DurationMinutes, ReminderMode: in.ReminderMode, ReminderMinutesBefore: in.ReminderMinutesBefore, TagIDs: in.TagIDs}
 		if err := u.validateTask(ctx, scope, value); err != nil {
 			return err
@@ -96,6 +103,14 @@ func (u *UseCase) UpdateTask(ctx context.Context, scope *uuid.UUID, in *models.U
 		value, err := domain.ApplyTaskUpdate(current, in)
 		if err != nil {
 			return err
+		}
+		if value.ParentID != nil && (current.ParentID == nil || *current.ParentID != *value.ParentID) && (in.InheritProjectTags == nil || *in.InheritProjectTags) {
+			parent, err := u.GetTask(ctx, scope, *value.ParentID)
+			if err != nil {
+				return err
+			}
+			value.TagIDs = domain.InheritProjectTags(value.TagIDs, parent.TagIDs)
+			in.TagIDs = &value.TagIDs
 		}
 		if err := u.validateTask(ctx, scope, value); err != nil {
 			return err
@@ -172,6 +187,25 @@ func (u *UseCase) SetTaskCompleted(ctx context.Context, scope *uuid.UUID, in *mo
 		var err error
 		result, err = u.dependencies.Tasks.SetTaskCompleted(ctx, scope, in)
 		return err
+	})
+	return result, err
+}
+
+func (u *UseCase) RestoreTask(ctx context.Context, scope *uuid.UUID, id uuid.UUID) (models.Task, error) {
+	var result models.Task
+	err := u.mutate(ctx, scope, func(ctx context.Context) error {
+		if err := u.dependencies.Tasks.RestoreTask(ctx, scope, id); err != nil {
+			return err
+		}
+		value, err := u.GetTask(ctx, scope, id)
+		if err != nil {
+			return err
+		}
+		if err := u.validateTask(ctx, scope, value); err != nil {
+			return err
+		}
+		result = value
+		return nil
 	})
 	return result, err
 }
