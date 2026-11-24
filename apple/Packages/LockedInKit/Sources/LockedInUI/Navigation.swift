@@ -6,6 +6,12 @@ public enum Destination: Hashable {
     case boardDetail(UUID)
     case list(UUID)
     case tag(UUID)
+    var parentDestination: Destination? {
+        switch self {
+        case .tag: .tags
+        default: nil
+        }
+    }
     func title(in snapshot: Snapshot) -> String {
         switch self {
         case .today: return "Сегодня"

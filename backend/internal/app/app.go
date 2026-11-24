@@ -7,9 +7,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	reportrepo "github.com/alnoi/locked-in/backend/internal/feedback/repository/postgres/report"
+	reporthttp "github.com/alnoi/locked-in/backend/internal/feedback/transport/http"
+	reportusecase "github.com/alnoi/locked-in/backend/internal/feedback/usecase"
+
 	"github.com/alnoi/locked-in/backend/internal/config"
-	identitymodels "github.com/alnoi/locked-in/backend/internal/identity/models"
 	identityrepo "github.com/alnoi/locked-in/backend/internal/identity/repository/postgres"
+	sessionrepo "github.com/alnoi/locked-in/backend/internal/identity/repository/postgres/session"
+	identityhttp "github.com/alnoi/locked-in/backend/internal/identity/transport/http"
 	identityusecase "github.com/alnoi/locked-in/backend/internal/identity/usecase"
 	boardrepo "github.com/alnoi/locked-in/backend/internal/tracker/repository/postgres/board"
 	commentrepo "github.com/alnoi/locked-in/backend/internal/tracker/repository/postgres/comment"
@@ -61,22 +66,25 @@ func New(ctx context.Context, settings config.Config) (*App, error) {
 	tasks := taskrepo.New(getter)
 	comments := commentrepo.New(getter)
 	links := linksrepo.New(getter)
-	identity := identityusecase.New(users)
-	user, err := identity.GetLocalUser(ctx, &identitymodels.EnsureLocalUserIn{Username: settings.LocalUser.Username, TimeZone: settings.LocalUser.TimeZone})
-	if err != nil {
-		pool.Close()
-		return nil, err
-	}
 	core := usecase.New(usecase.Dependencies{Boards: boards, Lists: lists, Tags: tags, Tasks: tasks, Comments: comments, Links: links, Transactions: transactions})
-	if err := core.EnsureGeneralBoard(ctx, &user.ID); err != nil {
-		pool.Close()
-		return nil, err
-	}
 	authorized := usecase.NewAuthorized(core)
-	handlers := local.New(authorized, user)
+	sessions := sessionrepo.New(getter)
+	identity := identityusecase.New(users, sessions, core, transactions)
+	profiles := identityusecase.NewAuthorized(identity)
+	authentication := identityhttp.New(identity, profiles)
+	tracker := local.New(authorized, authentication.Actor)
+	reports := reportrepo.New(getter)
+	reportCore := reportusecase.New(reports)
+	reportAuthorized := reportusecase.NewAuthorized(reportCore)
+	feedback := reporthttp.New(reportAuthorized, authentication.Actor)
+	handlers := struct {
+		*local.Handlers
+		*identityhttp.AuthHandlers
+		*reporthttp.ReportHandlers
+	}{tracker, authentication, feedback}
 	application := &App{logger: logger, pool: pool, shutdownTimeout: settings.Server.ShutdownTimeout}
 	application.ready.Store(true)
-	router := newRouter(logger, settings.Server, pool, handlers, &application.ready)
+	router := newRouter(routerDependencies{logger: logger, settings: settings.Server, pool: pool, handlers: handlers, authenticate: authentication.Authenticate(), ready: &application.ready})
 	application.server = &http.Server{Addr: settings.Server.Address, Handler: router, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: settings.Server.RequestTimeout, WriteTimeout: settings.Server.RequestTimeout + time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}
 	return application, nil
 }

@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 struct PlannerSidebarLayout<Sidebar: View, Detail: View>: View {
   @Binding var columnVisibility: NavigationSplitViewVisibility
@@ -6,12 +9,17 @@ struct PlannerSidebarLayout<Sidebar: View, Detail: View>: View {
   private let hoverSidebar: Bool
   private let sidebar: Sidebar
   private let detail: Detail
+  private let phoneScreen: PhoneScreen
+  private let phoneDirection: CalendarPageDirection
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   init(columnVisibility: Binding<NavigationSplitViewVisibility>,
     compactColumn: Binding<NavigationSplitViewColumn>, hoverSidebar: Bool,
+    phoneScreen: PhoneScreen = .section(.board), phoneDirection: CalendarPageDirection = CalendarPageDirection(),
     @ViewBuilder sidebar: () -> Sidebar, @ViewBuilder detail: () -> Detail) {
     _columnVisibility = columnVisibility
     _compactColumn = compactColumn
     self.hoverSidebar = hoverSidebar
+    self.phoneScreen = phoneScreen; self.phoneDirection = phoneDirection
     self.sidebar = sidebar()
     self.detail = detail()
   }
@@ -38,10 +46,28 @@ struct PlannerSidebarLayout<Sidebar: View, Detail: View>: View {
         .zIndex(1)
     }.clipped()
     #else
-    NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $compactColumn) {
-      sidebar
-    } detail: { detail }
+    if UIDevice.current.userInterfaceIdiom == .phone {
+      ZStack {
+        if compactColumn == .sidebar {
+          NavigationStack { sidebar }.id(phoneScreen).transition(phoneTransition)
+        } else {
+          detail.id(phoneScreen).transition(phoneTransition)
+        }
+      }.frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: phoneScreen)
+    } else {
+      NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $compactColumn) {
+        sidebar
+      } detail: { detail }
+    }
     #endif
+  }
+  private var phoneTransition: AnyTransition {
+    reduceMotion ? .opacity : .asymmetric(
+      insertion: .modifier(active: CalendarPageSlide(progress: 1, direction: phoneDirection),
+        identity: CalendarPageSlide(progress: 0, direction: phoneDirection)),
+      removal: .modifier(active: CalendarPageSlide(progress: -1, direction: phoneDirection),
+        identity: CalendarPageSlide(progress: 0, direction: phoneDirection)))
   }
 }
 

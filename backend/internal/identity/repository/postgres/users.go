@@ -19,7 +19,7 @@ func (r *Repository) EnsureLocalUser(ctx context.Context, in *models.EnsureLocal
 	return nil
 }
 func (r *Repository) GetUsers(ctx context.Context, in models.GetUsersFilters) ([]models.User, error) {
-	rows, err := r.getter.Get(ctx).Query(ctx, getUsersQuery, pgx.NamedArgs{"username": in.Username})
+	rows, err := r.getter.Get(ctx).Query(ctx, getUsersQuery, pgx.NamedArgs{"username": in.Username, "id": in.ID})
 	if err != nil {
 		return nil, fmt.Errorf("GetUsers: %w", err)
 	}

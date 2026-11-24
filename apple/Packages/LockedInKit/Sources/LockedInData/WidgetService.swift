@@ -13,7 +13,7 @@ public enum WidgetService {
         sameContext(current, value)
       else { return try store.displaySnapshot() }
       var updated = WidgetSnapshot(snapshot: snapshot,
-        settings: ConnectionSettings(mode: value.mode, serverAddress: value.serverAddress),
+        settings: ConnectionSettings(mode: value.mode, serverAddress: value.serverAddress, accountID: value.userID),
         theme: value.theme, updatedAt: requestedAt)
       updated.pendingTaskIDs = value.pendingTaskIDs
       try store.saveRemote(updated)
@@ -48,6 +48,8 @@ public enum WidgetService {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.timeoutIntervalForRequest = 5
     configuration.timeoutIntervalForResource = 8
-    return HTTPRepository(baseURL: url, session: URLSession(configuration: configuration))
+    guard let session = try AuthSessionStore.load(address: value.serverAddress, userID: value.userID),
+      session.expiresAt > .now else { throw AuthenticationError.sessionExpired }
+    return HTTPRepository(baseURL: url, session: URLSession(configuration: configuration), accessToken: session.accessToken)
   }
 }

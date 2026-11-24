@@ -149,7 +149,12 @@ struct BoardScreen: View {
         Button(action: createList) {
           Label("Добавить список", systemImage: "plus").frame(maxWidth: .infinity).padding(14)
         }.buttonStyle(.bordered).disabled(!model.canEditCollections)
-      }.padding(20)
+      }
+      #if os(iOS)
+      .padding(.horizontal, 16).padding(.vertical, 8)
+      #else
+      .padding(20)
+      #endif
     }.refreshable { await model.refresh() }
       .modifier(BoardDragAutoscroll(axis: .vertical, enabled: taskDragSession.source != nil))
     }
@@ -210,7 +215,11 @@ struct BoardScreen: View {
         .modifier(TaskListEndMarker(space: list?.id ?? ListOrdering.inboxID) { position in
           taskEndPositions[list?.id ?? ListOrdering.inboxID] = position
         })
-    }.padding(.horizontal, 16).padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
+    }
+      #if os(macOS)
+      .padding(.horizontal, 16)
+      #endif
+      .padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
       .modifier(
         WholeListDraggable(
           listID: list?.id ?? ListOrdering.inboxID, enabled: model.hasLoaded, session: dragSession,

@@ -191,18 +191,25 @@ public struct CommentRecord: Codable, Identifiable, Sendable {
     updatedAt = .now
   }
 }
-public struct UserRecord: Codable, Sendable {
+public struct UserRecord: Codable, Equatable, Sendable {
   public var id: UUID
   public var username: String
+  public var avatarEmoji: String
   public var timeZone: String
   public var createdAt: Date
-  public init(
-    id: UUID = UUID(), username: String = "local", timeZone: String = TimeZone.current.identifier
-  ) {
-    self.id = id
-    self.username = username
-    self.timeZone = timeZone
-    createdAt = .now
+  public init(id: UUID = UUID(), username: String = "local", timeZone: String = TimeZone.current.identifier,
+    avatarEmoji: String = "") {
+    self.id = id; self.username = username; self.timeZone = timeZone
+    self.avatarEmoji = avatarEmoji; createdAt = .now
+  }
+  private enum CodingKeys: String, CodingKey { case id, username, avatarEmoji, timeZone, createdAt }
+  public init(from decoder: Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    id = try values.decode(UUID.self, forKey: .id)
+    username = try values.decode(String.self, forKey: .username)
+    avatarEmoji = try values.decodeIfPresent(String.self, forKey: .avatarEmoji) ?? ""
+    timeZone = try values.decode(String.self, forKey: .timeZone)
+    createdAt = try values.decode(Date.self, forKey: .createdAt)
   }
 }
 public struct Snapshot: Codable, Sendable {

@@ -1,4 +1,4 @@
-package local
+package http
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func decodeJSON(c *gin.Context, out any) error {
+func DecodeJSON(c *gin.Context, out any) error {
 	contentType, _, err := mime.ParseMediaType(c.GetHeader("Content-Type"))
 	if err != nil || contentType != "application/json" {
 		return apperr.ErrValidation()

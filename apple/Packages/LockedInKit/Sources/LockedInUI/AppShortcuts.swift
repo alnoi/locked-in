@@ -66,6 +66,7 @@ struct AppShortcutHandler: NSViewRepresentable {
   var enabled = true
   var focusOnAppear = false
   var submitDatePickerOnReturn = false
+  var submitOnReturn = false
   var handle: (AppShortcut) -> Bool
 
   func makeNSView(context: Context) -> ShortcutView { ShortcutView() }
@@ -75,6 +76,7 @@ struct AppShortcutHandler: NSViewRepresentable {
     view.handle = handle
     view.wantsInitialFocus = focusOnAppear
     view.submitDatePickerOnReturn = submitDatePickerOnReturn
+    view.submitOnReturn = submitOnReturn
     view.focusInitially()
   }
 
@@ -88,6 +90,7 @@ struct AppShortcutHandler: NSViewRepresentable {
     private var focusedInitially = false
     var wantsInitialFocus = false
     var submitDatePickerOnReturn = false
+    var submitOnReturn = false
     override var acceptsFirstResponder: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
@@ -145,6 +148,16 @@ struct AppShortcutHandler: NSViewRepresentable {
         $0.enabled && $0.window === window && !$0.isHiddenOrHasHiddenAncestor
       }.sorted { $0.priority > $1.priority }
       if key == "return", modifiers.isEmpty,
+        let handler = candidates.first(where: { $0.submitOnReturn }) {
+        // Commit the active field before the form reads its bindings.
+        // Let the input method finish composing a character first.
+        if let editor = window.firstResponder as? NSTextView, editor.hasMarkedText() { return false }
+        editingDatePicker(in: window)?.validateEditing()
+        guard window.makeFirstResponder(nil) else { return true }
+        DispatchQueue.main.async { _ = handler.handle?(.submit) }
+        return true
+      }
+      if key == "return", modifiers.isEmpty,
         let handler = candidates.first(where: { $0.submitDatePickerOnReturn }),
         let picker = editingDatePicker(in: window) {
         // NSDatePicker consumes Return without emitting SwiftUI's onSubmit.
@@ -171,6 +184,7 @@ struct AppShortcutHandler: View {
   var enabled = true
   var focusOnAppear = false
   var submitDatePickerOnReturn = false
+  var submitOnReturn = false
   var handle: (AppShortcut) -> Bool
   var body: some View { Color.clear.allowsHitTesting(false) }
 }

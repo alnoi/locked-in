@@ -1,7 +1,7 @@
 import SwiftUI
 import LockedInDomain
 
-struct CalendarScreen: View {
+struct CalendarWorkspace: View {
     @Bindable var model: AppModel
     var search: String
     var showCompleted: Bool
@@ -21,12 +21,18 @@ struct CalendarScreen: View {
     @State private var pickDate = false
     @State private var showUnplanned = true
     private let calendar = Calendar.current
-    private let hourHeight: CGFloat = 60
+    private let timelineOnly: Bool
+    private let selectedDay: Date?
+    private let timelineScale: CGFloat
+    private var hourHeight: CGFloat { 60 * timelineScale }
     init(model: AppModel, search: String, showCompleted: Bool, focus: CalendarTaskFocus? = nil,
-      open: @escaping (TaskRecord) -> Void, create: @escaping (Date) -> Void) {
+      open: @escaping (TaskRecord) -> Void, create: @escaping (Date) -> Void,
+      timelineOnly: Bool = false, selectedDay: Date? = nil, timelineScale: CGFloat = 1) {
       self.model = model; self.search = search; self.showCompleted = showCompleted
       self.focus = focus; self.open = open; self.create = create
-      _day = State(initialValue: Calendar.current.startOfDay(for: focus?.date ?? .now))
+      self.timelineOnly = timelineOnly; self.selectedDay = selectedDay
+      self.timelineScale = timelineScale
+      _day = State(initialValue: Calendar.current.startOfDay(for: selectedDay ?? focus?.date ?? .now))
       #if os(macOS)
       _mode = State(initialValue: focus == nil ? .week : .day)
       #else
@@ -61,9 +67,11 @@ struct CalendarScreen: View {
         let displayedDates = mode == .week ? week : [day]
         let displayedWeek = mode == .week
         VStack(spacing: 0) {
-            calendarHeader.modifier(CalendarPeriodSwipe(enabled: interaction == nil, shift: shift))
-            if showUnplanned && !tasks.filter({ $0.plannedAt == nil }).isEmpty { unplanned }
-            Divider()
+            if !timelineOnly {
+              calendarHeader.modifier(CalendarPeriodSwipe(enabled: interaction == nil, shift: shift))
+              if showUnplanned && !tasks.filter({ $0.plannedAt == nil }).isEmpty { unplanned }
+              Divider()
+            }
             ZStack {
             Group {
             if mode == .month {
@@ -80,7 +88,7 @@ struct CalendarScreen: View {
                 let minimumWidth: CGFloat = displayedWeek ? 155 : 250
                 #endif
                 let width = max(viewport.size.width, CGFloat(dates.count) * minimumWidth + 48)
-                ScrollView(.horizontal) {
+                Group {
                         VStack(spacing: 0) {
                             if displayedWeek {
                             HStack(spacing: 0) {
@@ -126,21 +134,27 @@ struct CalendarScreen: View {
                               .onChange(of: focus?.id) { _,_ in proxy.scrollTo("hour-\(scrollHour)",anchor: .topLeading) }
                             }.frame(height: max(1,viewport.size.height - (displayedWeek ? 40 : 0)))
                         }.frame(width: width)
-                }
+                }.modifier(CalendarTimelineHorizontalScroll(enabled: !timelineOnly))
             }
             }
             }.id(periodID).transition(periodTransition)
             }.clipped()
-              .modifier(CalendarPeriodSwipe(enabled: interaction == nil && mode != .month, shift: shift))
+              .modifier(CalendarPeriodSwipe(enabled: !timelineOnly && interaction == nil && mode != .month, shift: shift))
         }.onChange(of: mode) { _, _ in cancelInteraction() }
+        .onChange(of: selectedDay) { _, value in
+          guard let value, !calendar.isDate(value, inSameDayAs: day) else { return }
+          cancelInteraction()
+          pageDirection.sign = value > day ? 1 : -1
+          day = calendar.startOfDay(for: value)
+        }
         .onChange(of: focus?.id) { _, _ in
           guard let focus else { return }
           cancelInteraction()
-          day = calendar.startOfDay(for: focus.date)
+          day = calendar.startOfDay(for: selectedDay ?? focus.date)
           mode = .day
         }
         .background {
-          AppShortcutHandler(priority: 10, enabled: interaction == nil && !pickDate) { shortcut in
+          AppShortcutHandler(priority: 10, enabled: !timelineOnly && interaction == nil && !pickDate) { shortcut in
             switch shortcut {
             case .previousPeriod: shift(-1)
             case .nextPeriod: shift(1)
@@ -240,7 +254,10 @@ struct CalendarScreen: View {
             if calendar.isDateInToday(date) {
                 TimelineView(.periodic(from: .now, by: 60)) { tick in
                     let parts = calendar.dateComponents([.hour, .minute], from: tick.date)
-                    HStack(spacing: 0) { Circle().fill(.red).frame(width: 5, height: 5); Rectangle().fill(.red).frame(height: 1) }
+                    HStack(spacing: 0) {
+                      Circle().fill(timelineOnly ? Color.accent : .red).frame(width: 5, height: 5)
+                      Rectangle().fill(timelineOnly ? Color.accent : .red).frame(height: 1)
+                    }
                         .offset(y: CGFloat((parts.hour ?? 0) * 60 + (parts.minute ?? 0)) / 60 * hourHeight)
                 }.allowsHitTesting(false)
             }
@@ -376,10 +393,24 @@ private struct CalendarTaskBlock: View {
     @GestureState private var tracking = false
     private var color: Color { TaskTagStyle.color(task, tags: model.snapshot.tags) }
     private func drag(resizing: Bool) -> some Gesture {
+      #if os(iOS)
+      LongPressGesture(minimumDuration: 0.3, maximumDistance: 10)
+        .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("calendarTimeline")))
+        .updating($tracking) { value, state, _ in
+          if case .second(true, _) = value { state = true }
+        }
+        .onChanged { value in
+          if case .second(true, let drag?) = value { changed(drag.translation, resizing) }
+        }
+        .onEnded { value in
+          if case .second(true, _) = value { ended() }
+        }
+      #else
       DragGesture(minimumDistance: 3, coordinateSpace: .named("calendarTimeline"))
         .updating($tracking) { _, state, _ in state = true }
         .onChanged { changed($0.translation, resizing) }
         .onEnded { _ in ended() }
+      #endif
     }
     var body: some View {
         GeometryReader { geometry in
@@ -411,4 +442,12 @@ private struct CalendarTaskBlock: View {
                 }
         }.onChange(of: tracking) { _, active in if !active { cancelled() } }
     }
+}
+
+private struct CalendarTimelineHorizontalScroll: ViewModifier {
+  var enabled: Bool
+  func body(content: Content) -> some View {
+    if enabled { ScrollView(.horizontal) { content } }
+    else { content }
+  }
 }

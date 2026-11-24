@@ -5,21 +5,38 @@ import (
 
 	"github.com/alnoi/locked-in/backend/internal/app/apperr"
 	"github.com/alnoi/locked-in/backend/internal/identity/models"
+	"github.com/google/uuid"
 )
 
-type UseCase struct{ repository usersRepository }
+type UseCase struct {
+	users        usersRepository
+	sessions     sessionsRepository
+	boards       boardsUseCase
+	transactions transactionManager
+}
 
-func New(repository usersRepository) *UseCase { return &UseCase{repository: repository} }
-func (u *UseCase) GetLocalUser(ctx context.Context, in *models.EnsureLocalUserIn) (models.User, error) {
-	if err := u.repository.EnsureLocalUser(ctx, in); err != nil {
-		return models.User{}, err
+func New(users usersRepository, sessions sessionsRepository, boards boardsUseCase, transactions transactionManager) *UseCase {
+	return &UseCase{users: users, sessions: sessions, boards: boards, transactions: transactions}
+}
+func (u *UseCase) GetUser(ctx context.Context, scope *uuid.UUID) (models.User, error) {
+	if scope == nil {
+		return models.User{}, apperr.ErrUnauthorized()
 	}
-	values, err := u.repository.GetUsers(ctx, models.GetUsersFilters{Username: in.Username})
+	values, err := u.users.GetUsers(ctx, models.GetUsersFilters{ID: scope})
 	if err != nil {
 		return models.User{}, err
 	}
 	if len(values) == 0 {
-		return models.User{}, apperr.ErrNotFound()
+		return models.User{}, apperr.ErrUnauthorized()
 	}
 	return values[0], nil
+}
+func (u *UseCase) UpdateProfile(ctx context.Context, scope *uuid.UUID, in *models.UpdateProfileIn) (models.User, error) {
+	if scope == nil {
+		return models.User{}, apperr.ErrUnauthorized()
+	}
+	if err := models.ValidateAvatar(in.AvatarEmoji); err != nil {
+		return models.User{}, err
+	}
+	return u.users.UpdateProfile(ctx, scope, in)
 }

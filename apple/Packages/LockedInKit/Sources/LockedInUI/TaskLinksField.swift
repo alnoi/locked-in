@@ -1,3 +1,4 @@
+import LockedInData
 import SwiftUI
 
 struct TaskLinksField: View {
@@ -6,6 +7,7 @@ struct TaskLinksField: View {
   var focusRequest = 0
   @FocusState private var focused: Bool
   var onSave: (TaskLinks) async throws -> Void = { _ in }
+  var onSubmit: (() -> Void)?
   @State private var message: String?
   @State private var isSaving = false
 
@@ -38,7 +40,9 @@ struct TaskLinksField: View {
           #if os(iOS)
           .keyboardType(.URL).textInputAutocapitalization(.never)
           #endif
-          .onSubmit { Task { await add() } }.disabled(isSaving).accessibilityIdentifier("task-url-input")
+          .onSubmit {
+            if let onSubmit { onSubmit() } else { Task { await add() } }
+          }.disabled(isSaving).accessibilityIdentifier("task-url-input")
         if !draft.isEmpty {
           Button { Task { await add() } } label: {
             Image(systemName: "plus.circle.fill").foregroundStyle(Color.accent)
@@ -65,7 +69,7 @@ struct TaskLinksField: View {
       try await onSave(updated)
       links = updated
       message = nil
-    } catch { message = error.localizedDescription }
+    } catch { message = UserFacingErrors.message(error) }
   }
 
   private func add() async {
@@ -79,6 +83,6 @@ struct TaskLinksField: View {
       links = updated
       draft = ""
       message = nil
-    } catch { message = error.localizedDescription }
+    } catch { message = UserFacingErrors.message(error) }
   }
 }

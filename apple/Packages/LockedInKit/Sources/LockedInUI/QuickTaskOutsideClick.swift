@@ -6,19 +6,21 @@ import SwiftUI
   struct QuickTaskOutsideClick: NSViewRepresentable {
     var enabled: Bool
     var includeSheetParent = false
+    var checkViewBounds = true
     var outside: () -> Void
     func makeCoordinator() -> Coordinator { Coordinator() }
     func makeNSView(context: Context) -> NSView { NSView() }
     func updateNSView(_ view: NSView, context: Context) {
       context.coordinator.outside = outside
-      context.coordinator.watch(view, enabled: enabled, includeSheetParent: includeSheetParent)
+      context.coordinator.watch(view, enabled: enabled, includeSheetParent: includeSheetParent,
+        checkViewBounds: checkViewBounds)
     }
     static func dismantleNSView(_ view: NSView, coordinator: Coordinator) { coordinator.stop() }
     @MainActor final class Coordinator {
       var outside: (() -> Void)?
       private var monitor: Any?
       private var resignation: NSObjectProtocol?
-      func watch(_ anchor: NSView, enabled: Bool, includeSheetParent: Bool) {
+      func watch(_ anchor: NSView, enabled: Bool, includeSheetParent: Bool, checkViewBounds: Bool) {
         guard enabled else {
           stop()
           return
@@ -27,11 +29,19 @@ import SwiftUI
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) {
           [weak self, weak anchor] event in
           guard let self, let anchor else { return event }
-          if includeSheetParent, let parent = anchor.window?.sheetParent, event.window === parent {
-            self.outside?()
-            return nil
+          if includeSheetParent, let window = anchor.window {
+            // A nested sheet handles its own outside click; keep its parent open.
+            guard window.attachedSheet == nil else { return event }
+            var parent = window.sheetParent
+            while let current = parent {
+              if event.window === current {
+                self.outside?()
+                return nil
+              }
+              parent = current.sheetParent
+            }
           }
-          guard event.window === anchor.window else { return event }
+          guard checkViewBounds, event.window === anchor.window else { return event }
           if !anchor.bounds.contains(anchor.convert(event.locationInWindow, from: nil)) {
             self.outside?()
           }
@@ -59,6 +69,7 @@ import SwiftUI
   struct QuickTaskOutsideClick: View {
     var enabled: Bool
     var includeSheetParent = false
+    var checkViewBounds = true
     var outside: () -> Void
     @State private var frame: CGRect = .zero
     var body: some View {

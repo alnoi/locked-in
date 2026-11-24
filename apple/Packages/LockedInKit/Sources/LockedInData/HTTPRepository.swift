@@ -3,10 +3,12 @@ import LockedInDomain
 
 public struct HTTPRepository: TaskSyncRemote {
   public let baseURL: URL
+  private let accessToken: String?
   private let session: URLSession
-  public init(baseURL: URL, session: URLSession = .shared) {
+  public init(baseURL: URL, session: URLSession = .shared, accessToken: String? = nil) {
     self.baseURL = baseURL
     self.session = session
+    self.accessToken = accessToken
   }
   private struct Collection<Value: Decodable>: Decodable {
     let items: [Value]
@@ -98,7 +100,10 @@ public struct HTTPRepository: TaskSyncRemote {
     id.map { resource + "/" + $0.uuidString } ?? resource
   }
   private func object<T: Encodable>(_ value: T) throws -> [String: Any] {
-    try JSONSerialization.jsonObject(with: JSONCodec.encoder().encode(value)) as! [String: Any]
+    guard let object = try JSONSerialization.jsonObject(with: JSONCodec.encoder().encode(value)) as? [String: Any] else {
+      throw RequestFailure.internalError
+    }
+    return object
   }
   private func request<T: Decodable>(
     _ path: String, method: String = "GET", body: [String: Any]? = nil
@@ -115,6 +120,8 @@ public struct HTTPRepository: TaskSyncRemote {
   {
     var request = URLRequest(url: baseURL.appendingPathComponent("api/v1/" + path))
     request.httpMethod = method
+    request.cachePolicy = .reloadIgnoringLocalCacheData
+    if let accessToken { request.setValue("Bearer " + accessToken, forHTTPHeaderField: "Authorization") }
     request.timeoutInterval = 12
     if let body {
       request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -122,16 +129,9 @@ public struct HTTPRepository: TaskSyncRemote {
     }
     let (data, response) = try await session.data(for: request)
     guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
-    switch response.statusCode {
-    case 200..<300: return data
-    case 400: throw TrackerError.validation("Проверь поля: даты, длительность и связи задачи.")
-    case 401, 403: throw TrackerError.validation("Нет доступа к этому серверу.")
-    case 404: throw TrackerError.notFound
-    case 409:
-      throw TrackerError.conflict(
-        "Есть связанные задачи, списки или теги. Сначала перенеси их или убери связь.")
-    case 500...599: throw SyncConnectionError.serverUnavailable
-    default: throw TrackerError.validation("Сервер отклонил запрос. Попробуй ещё раз.")
+    guard (200..<300).contains(response.statusCode) else {
+      throw ServerFailureMapper.error(status: response.statusCode, data: data, operation: .tracker)
     }
+    return data
   }
 }

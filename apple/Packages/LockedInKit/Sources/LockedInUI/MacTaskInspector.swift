@@ -25,7 +25,7 @@
         model: model, presentation: TaskPresentation(taskID: task.id, input: TaskInput(task)),
         close: { binding.wrappedValue = false }
       )
-      .environment(\.locale, locale).environment(\.colorScheme, colorScheme).tint(Color.accent)
+      .environment(\.locale, locale).environment(\.colorScheme, colorScheme).trackItAccent().bugReportAccess(model: model)
       context.coordinator.show(content, anchoredTo: view, centered: centered)
     }
     static func dismantleNSView(_ view: NSView, coordinator: Coordinator) { coordinator.close() }

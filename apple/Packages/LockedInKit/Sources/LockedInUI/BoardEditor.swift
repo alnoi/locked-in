@@ -1,3 +1,4 @@
+import LockedInData
 import LockedInDomain
 import SwiftUI
 
@@ -71,12 +72,14 @@ struct BoardEditor: View {
                                 do {
                                     try await model.mutate(.deleteBoard(id))
                                     dismiss()
-                                } catch { errorMessage = error.localizedDescription }
+                                } catch { errorMessage = UserFacingErrors.message(error) }
                             }
                         }
                     }
                 }
-        }.interactiveDismissDisabled()
+        }.interactiveDismissDisabled(saving || model.isMutating || confirmDelete)
+        .dismissOnOutsideClick(enabled: !saving && !model.isMutating && !confirmDelete)
+        .submitOnEnter(enabled: !saving && !model.isMutating && !confirmDelete) { Task { await save() } }
             #if os(macOS)
                 .frame(width: 500, height: 520)
             #endif
@@ -93,6 +96,6 @@ struct BoardEditor: View {
             try TrackerRules.validate(value, id: presentation.boardID, in: model.snapshot)
             try await model.mutate(.board(presentation.boardID, value))
             dismiss()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = UserFacingErrors.message(error) }
     }
 }

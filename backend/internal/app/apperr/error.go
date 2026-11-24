@@ -6,10 +6,21 @@ type Error struct {
 	Message string
 }
 
-func (e *Error) Error() string { return string(e.Code) }
-func ErrValidation() *Error    { return &Error{CodeValidation, 400, "Invalid request"} }
-func ErrNotFound() *Error      { return &Error{CodeNotFound, 404, "Resource not found"} }
-func ErrConflict() *Error      { return &Error{CodeConflict, 409, "Operation conflicts with existing data"} }
-func ErrUnauthorized() *Error  { return &Error{CodeUnauthorized, 401, "Local access required"} }
+func (e *Error) Error() string      { return string(e.Code) }
+func ErrValidation() *Error         { return publicError(CodeValidation) }
+func ErrNotFound() *Error           { return publicError(CodeNotFound) }
+func ErrConflict() *Error           { return publicError(CodeConflict) }
+func ErrUnauthorized() *Error       { return publicError(CodeUnauthorized) }
+func ErrInternal() *Error           { return publicError(CodeInternal) }
+func ErrRateLimited() *Error        { return publicError(CodeRateLimited) }
+func ErrInvalidCredentials() *Error { return publicError(CodeInvalidCredentials) }
+func ErrUsernameTaken() *Error      { return publicError(CodeUsernameTaken) }
+func ErrInvalidUsername() *Error    { return publicError(CodeInvalidUsername) }
+func ErrInvalidPassword() *Error    { return publicError(CodeInvalidPassword) }
+func ErrInvalidAvatar() *Error      { return publicError(CodeInvalidAvatar) }
+func ErrInvalidTimeZone() *Error    { return publicError(CodeInvalidTimeZone) }
+func ErrForbidden() *Error          { return publicError(CodeForbidden) }
+func ErrMethodNotAllowed() *Error   { return publicError(CodeMethodNotAllowed) }
+func ErrUnavailable() *Error        { return publicError(CodeUnavailable) }
 
-func ErrInternal() *Error { return &Error{CodeInternal, 500, "Internal server error"} }
+func ErrInvalidAttachment() *Error { return publicError(CodeInvalidAttachment) }

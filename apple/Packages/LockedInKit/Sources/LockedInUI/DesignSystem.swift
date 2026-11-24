@@ -9,7 +9,7 @@ extension Color {
       red: Double((value >> 16) & 255) / 255, green: Double((value >> 8) & 255) / 255,
       blue: Double(value & 255) / 255)
   }
-  static let accent = Color(hex: "#6558E8")
+  static let accent = Color.accentColor
   static let taskCardSurface = Color.primary.opacity(0.085)
   static let mutedSurface = Color.primary.opacity(0.035)
 }

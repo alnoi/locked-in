@@ -154,7 +154,7 @@ struct TaskEditor: View {
           }
           if let taskID = presentation.taskID { subtasks(taskID) }
           inspectorSection("Ссылки") {
-            TaskLinksField(links: $links, draft: $urlDraft, focusRequest: urlFocusRequest, onSave: persistLinks)
+            TaskLinksField(links: $links, draft: $urlDraft, focusRequest: urlFocusRequest, onSave: persistLinks, onSubmit: { Task { await save() } })
           }.id("task-links")
           if presentation.taskID != nil {
             Button("Удалить задачу", role: .destructive) { confirmDelete = true }
@@ -191,30 +191,33 @@ struct TaskEditor: View {
           do {
             try await model.mutate(.deleteTask(id))
             dismissEditor()
-          } catch { errorMessage = error.localizedDescription }
+          } catch { errorMessage = UserFacingErrors.message(error) }
         }
       }
     }
-    .sheet(item: $child) { TaskEditor(model: model, presentation: $0) }
+    .sheet(item: $child) { TaskEditor(model: model, presentation: $0).bugReportAccess(model: model, reserveSpace: true) }
     .onAppear { titleFocused = isCreating }
     #if os(macOS)
       .frame(width: 380, height: 620)
     #else
       .presentationDetents([.large]).presentationDragIndicator(.visible)
+      .background {
+        TaskSwipeDismiss(enabled: !saving && !noteSaving && !requestingPermission && !confirmDelete && child == nil,
+          attempt: finishOutside).allowsHitTesting(false)
+      }
     #endif
     .background {
-      AppShortcutHandler(priority: 100, enabled: child == nil && !confirmDelete && !requestingPermission,
-        focusOnAppear: !isCreating, submitDatePickerOnReturn: true, handle: handleShortcut).allowsHitTesting(false)
+      AppShortcutHandler(priority: 100, enabled: child == nil && !confirmDelete && !requestingPermission && !saving && !noteSaving,
+        focusOnAppear: !isCreating, submitDatePickerOnReturn: true, submitOnReturn: true, handle: handleShortcut).allowsHitTesting(false)
     }
-    .background {
-      QuickTaskOutsideClick(enabled: (isCreating || saveOnOutside) && !saving && !requestingPermission && !confirmDelete && child == nil,
-        includeSheetParent: true, outside: finishOutside).allowsHitTesting(false)
-    }
+    .dismissOnOutsideClick(enabled: close == nil && !saving && !noteSaving && !requestingPermission && !confirmDelete && child == nil,
+      perform: finishOutside)
+    .interactiveDismissDisabled(saving || noteSaving || requestingPermission)
   }
   private func finishOutside() {
     guard !saving, !requestingPermission, !confirmDelete, child == nil else { return }
     if isCreating { finishCreation() }
-    else if saveOnOutside { Task { await save(onlyIfChanged: true) } }
+    else { Task { await save(onlyIfChanged: true) } }
   }
   private func finishCreation() {
     guard isCreating, !saving, !requestingPermission, child == nil else { return }
@@ -421,7 +424,7 @@ struct TaskEditor: View {
       savedInput = value
       if let permissionWarning { model.reminderWarning = permissionWarning }
     }
-    if onlyIfChanged, let id = presentation.taskID,
+    if let id = presentation.taskID,
       !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       try await model.mutate(.comment(editingCommentID, taskID: id,
         text: comment.trimmingCharacters(in: .whitespacesAndNewlines)))
@@ -436,7 +439,7 @@ struct TaskEditor: View {
     do {
       try await persistTask(onlyIfChanged: onlyIfChanged)
       dismissEditor()
-    } catch { errorMessage = error.localizedDescription }
+    } catch { errorMessage = UserFacingErrors.message(error) }
   }
   private func reloadAfterUndo() {
     guard let id = presentation.taskID else { return }
@@ -493,7 +496,7 @@ struct TaskEditor: View {
       }
       dismissEditor()
       DispatchQueue.main.async { NotificationCenter.default.post(name: .appShortcut, object: shortcut) }
-    } catch { errorMessage = error.localizedDescription }
+    } catch { errorMessage = UserFacingErrors.message(error) }
   }
   private func taskAction(_ action: AppShortcut) async {
     guard !saving, model.canEdit, let id = presentation.taskID else { return }
@@ -548,7 +551,7 @@ struct TaskEditor: View {
         }
       default: break
       }
-    } catch { errorMessage = error.localizedDescription }
+    } catch { errorMessage = UserFacingErrors.message(error) }
   }
   private func saveNote(_ id: UUID) async {
     let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -559,7 +562,7 @@ struct TaskEditor: View {
       try await model.mutate(.comment(editingCommentID, taskID: id, text: text))
       comment = ""
       editingCommentID = nil
-    } catch { errorMessage = error.localizedDescription }
+    } catch { errorMessage = UserFacingErrors.message(error) }
   }
   @ViewBuilder private func subtasks(_ id: UUID) -> some View {
     if input.parentID == nil {
@@ -619,7 +622,7 @@ struct TaskEditor: View {
       }
       TextField("Написать заметку…", text: $comment, axis: .vertical).lineLimit(1...5)
         .textFieldStyle(.plain).fixedSize(horizontal: false, vertical: true)
-        .submitLabel(.done).onSubmit { Task { await saveNote(id) } }.submitScope()
+        .submitLabel(.done).onSubmit { Task { await save() } }.submitScope()
         .padding(.horizontal, 12).padding(.vertical, 8)
       if editingCommentID != nil || !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       HStack {

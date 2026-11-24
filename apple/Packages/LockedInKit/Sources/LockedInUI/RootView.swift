@@ -3,6 +3,8 @@ import LockedInDomain
 import SwiftUI
 #if os(macOS)
 import AppKit
+#else
+import UIKit
 #endif
 
 public struct LockedInRootView: View {
@@ -11,9 +13,14 @@ public struct LockedInRootView: View {
   #endif
   @Environment(\.openURL) private var openURL
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Bindable private var model: AppModel
   @State private var destination: Destination? = .board
   @State private var navigationHistory = NavigationHistory(initial: Destination.board)
+  #if os(iOS)
+  @State private var phoneHistory = PhoneNavigationHistory()
+  #endif
+  @State private var phoneDirection = CalendarPageDirection()
   @State private var hoverSidebar = false
   @State private var columnVisibility = NavigationSplitViewVisibility.all
   @State private var compactColumn = NavigationSplitViewColumn.detail
@@ -26,11 +33,93 @@ public struct LockedInRootView: View {
   @State private var listPresentation: ListPresentation?
   @AppStorage(AppTheme.preferenceKey) private var theme: AppTheme = .system
   @AppStorage("trackit.sidebar.collapsedBoards") private var collapsedBoardsStorage = ""
+  @State private var showProfile = false
   @State private var showSettings = false
   @State private var showCompleted = false
   public init(model: AppModel) { self.model = model }
   public var body: some View {
-    PlannerSidebarLayout(columnVisibility: $columnVisibility, compactColumn: $compactColumn, hoverSidebar: hoverSidebar)
+    Group {
+      if model.needsAuthentication {
+        AuthenticationView(model: model)
+          #if os(iOS)
+          .bugReportAccess(model: model, reserveSpace: true)
+          #endif
+      }
+      else { workspace }
+    }
+      #if os(macOS)
+      .bugReportAccess(model: model)
+      #endif
+      .task { await model.start() }
+      #if os(iOS)
+      .background { KeyboardDismissOnOutsideTap().allowsHitTesting(false) }
+      #endif
+      .onChange(of: model.settings.identity) { _, _ in resetAccountNavigation() }
+      .onChange(of: model.needsAuthentication) { _, value in if value { resetAccountNavigation() } }
+  }
+  private var phoneCalendarActive: Bool {
+    #if os(iOS)
+    destination == .calendar
+    #else
+    false
+    #endif
+  }
+  private var usesPhoneNavigation: Bool {
+    #if os(iOS)
+    UIDevice.current.userInterfaceIdiom == .phone
+    #else
+    false
+    #endif
+  }
+  private var currentPhoneScreen: PhoneScreen {
+    compactColumn == .sidebar ? .menu : .section(destination ?? .board)
+  }
+  private var canNavigateBack: Bool {
+    #if os(iOS)
+    usesPhoneNavigation ? phoneHistory.canGoBack : destination?.parentDestination != nil
+    #else
+    destination?.parentDestination != nil
+    #endif
+  }
+  private var canNavigateForward: Bool {
+    #if os(iOS)
+    usesPhoneNavigation && phoneHistory.canGoForward
+    #else
+    false
+    #endif
+  }
+  private var phoneCalendarPosition: PhoneCalendarPosition? {
+    #if os(iOS)
+    usesPhoneNavigation ? phoneHistory.current.calendarPosition : nil
+    #else
+    nil
+    #endif
+  }
+  private func rememberPhoneCalendar(_ position: PhoneCalendarPosition) {
+    #if os(iOS)
+    guard usesPhoneNavigation, currentPhoneScreen == .section(.calendar) else { return }
+    phoneHistory.rememberCalendar(position, focus: model.calendarFocus)
+    #endif
+  }
+  private var navigationGesturesEnabled: Bool {
+    taskPresentation == nil && boardPresentation == nil && listPresentation == nil
+      && !showSettings && !showProfile
+  }
+  private func resetAccountNavigation() {
+    destination = .board
+    navigationHistory = NavigationHistory(initial: .board)
+    #if os(iOS)
+    phoneHistory = PhoneNavigationHistory()
+    compactColumn = .detail
+    #endif
+    search = ""; searchPresented = false
+    taskPresentation = nil; boardPresentation = nil; listPresentation = nil
+    showProfile = false; showSettings = false
+    pendingShortcut = nil; taskSheetActive = false
+  }
+  private var workspace: some View {
+    PlannerSidebarLayout(columnVisibility: $columnVisibility, compactColumn: $compactColumn, hoverSidebar: hoverSidebar,
+      phoneScreen: currentPhoneScreen, phoneDirection: phoneDirection)
     {
       sidebar
         #if os(macOS)
@@ -51,7 +140,7 @@ public struct LockedInRootView: View {
               Button("Повторить") { Task { await model.refresh() } }
             }.font(.caption).padding(10).background(.orange.opacity(0.1))
           }
-          if let warning = model.syncWarning {
+          if model.hasLoaded, let warning = model.syncWarning {
             HStack {
               Image(systemName: "flag.fill").foregroundStyle(.red)
               Text(model.unsyncedTaskIDs.isEmpty ? warning : "Не все изменения отправлены: " + warning)
@@ -69,7 +158,8 @@ public struct LockedInRootView: View {
             }
             .font(.caption).padding(10).background(.orange.opacity(0.1))
           }
-          content
+          content.modifier(BackNavigationGesture(
+            enabled: canNavigateBack && navigationGesturesEnabled, back: navigateBack))
         }
         .overlay {
           if let token = model.dayProgress.celebrationID {
@@ -81,16 +171,29 @@ public struct LockedInRootView: View {
           }
         }
         .animation(.easeOut(duration: 0.2), value: model.dayProgress.celebrationID)
-        .navigationTitle((destination ?? .calendar).title(in: model.snapshot))
+        .navigationTitle(phoneCalendarActive ? "" : (destination ?? .calendar).title(in: model.snapshot))
         #if os(iOS)
           .navigationBarTitleDisplayMode(.inline)
+          .toolbar(.visible, for: .navigationBar)
+          .navigationBarBackButtonHidden(usesPhoneNavigation)
         #endif
         .searchable(text: $search, isPresented: $searchPresented, prompt: "Найти задачу")
         #if os(macOS)
         .toolbar(removing: .sidebarToggle)
         #endif
         .toolbar {
+          #if os(iOS)
+          ToolbarItem(placement: .topBarTrailing) { BugReportButton(model: model) }
+
+          ToolbarItem(placement: .topBarLeading) {
+            if usesPhoneNavigation && canNavigateBack {
+              Button(action: navigateBack) { Image(systemName: "chevron.left") }
+                .accessibilityLabel("Вернуться на предыдущий экран")
+            }
+          }
+          #endif
           ToolbarItemGroup(placement: .primaryAction) {
+            if !phoneCalendarActive {
             if model.isLoading { ProgressView().controlSize(.small) }
             Button {
               Task { await model.refresh() }
@@ -99,8 +202,10 @@ public struct LockedInRootView: View {
             }
             .disabled(model.isLoading).keyboardShortcut(
               "r", modifiers: .command)
+            }
           }
           ToolbarItem(placement: .automatic) {
+            if !phoneCalendarActive {
             Menu {
               Toggle("Показывать завершённые", isOn: $showCompleted)
               Button("Новая доска", systemImage: "rectangle.stack.badge.plus") {
@@ -123,6 +228,7 @@ public struct LockedInRootView: View {
             } label: {
               Label("Действия", systemImage: "ellipsis.circle")
             }
+            }
           }
         }
       }
@@ -142,6 +248,10 @@ public struct LockedInRootView: View {
     }
     #endif
     #if os(iOS)
+      .modifier(PhoneHistoryGestures(enabled: usesPhoneNavigation && navigationGesturesEnabled,
+        canGoBack: canNavigateBack, canGoForward: canNavigateForward,
+        back: navigateBack, forward: navigateForward))
+      .onChange(of: compactColumn) { _, _ in recordPhoneScreen() }
       .simultaneousGesture(
         SpatialTapGesture(coordinateSpace: .global).onEnded { event in
           NotificationCenter.default.post(name: .quickTaskOutsideTap, object: event.location)
@@ -149,12 +259,16 @@ public struct LockedInRootView: View {
     #endif
     .background { SearchOutsideClick().allowsHitTesting(false) }
     .background {
-      AppShortcutHandler(enabled: taskPresentation == nil && boardPresentation == nil && listPresentation == nil && !showSettings,
+      AppShortcutHandler(enabled: taskPresentation == nil && boardPresentation == nil && listPresentation == nil && !showSettings && !showProfile,
         handle: handleShortcut).allowsHitTesting(false)
     }
     .onChange(of: theme) { _, _ in model.publishWidgets() }
     .onChange(of: destination) { _, value in
       model.dayProgress.setOverdueVisible(value == .overdue && scenePhase == .active)
+      #if os(iOS)
+      recordPhoneScreen()
+      if value != .calendar { model.calendarFocus = nil }
+      #endif
     }
     .onChange(of: destination) { _, value in
       if case .boardDetail(let id) = value {
@@ -165,6 +279,9 @@ public struct LockedInRootView: View {
       guard let focus = model.calendarFocus else { return }
       if model.snapshot.tasks.first(where: { $0.id == focus.taskID })?.completed == true { showCompleted = true }
       destination = .calendar
+      #if os(iOS)
+      if usesPhoneNavigation { compactColumn = .detail }
+      #endif
     }
     .onReceive(NotificationCenter.default.publisher(for: .appShortcut)) { notification in
       guard let shortcut = notification.object as? AppShortcut else { return }
@@ -182,11 +299,13 @@ public struct LockedInRootView: View {
       }
     }) {
       TaskEditor(model: model, presentation: $0, saveOnOutside: destination == .calendar)
+        .bugReportAccess(model: model, reserveSpace: true)
         .onAppear { taskSheetActive = true }
     }
-    .sheet(item: $boardPresentation) { BoardEditor(model: model, presentation: $0) }
-    .sheet(item: $listPresentation) { ListEditor(model: model, presentation: $0) }
-    .sheet(isPresented: $showSettings) { SettingsView(model: model) }
+    .sheet(item: $boardPresentation) { BoardEditor(model: model, presentation: $0).bugReportAccess(model: model, reserveSpace: true) }
+    .sheet(item: $listPresentation) { ListEditor(model: model, presentation: $0).bugReportAccess(model: model, reserveSpace: true) }
+    .sheet(isPresented: $showSettings) { SettingsView(model: model).bugReportAccess(model: model, reserveSpace: true) }
+    .sheet(isPresented: $showProfile) { ProfileView(model: model).bugReportAccess(model: model, reserveSpace: true) }
     .alert(
       "Не удалось выполнить действие",
       isPresented: Binding(
@@ -211,6 +330,9 @@ public struct LockedInRootView: View {
       guard url.scheme == "lockedin" else { return }
       Task {
         await model.start()
+        #if os(iOS)
+        if usesPhoneNavigation { compactColumn = .detail }
+        #endif
         if url.host == "task", let id = UUID(uuidString: url.lastPathComponent),
           let task = model.snapshot.tasks.first(where: { $0.id == id }) {
           let date = task.plannedAt ?? task.deadlineAt
@@ -241,27 +363,30 @@ public struct LockedInRootView: View {
     Button { destination = route } label: { label().frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle()) }
       .buttonStyle(.plain).tag(route)
     #else
-    NavigationLink(value: route, label: label)
+    Button {
+      if usesPhoneNavigation { finishPhoneQuickEntry() }
+      if route == .calendar { model.calendarFocus = CalendarTaskFocus(date: .now) }
+      withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+        destination = route
+        compactColumn = .detail
+      }
+    } label: {
+      label().frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+    }.buttonStyle(.plain).tag(route)
     #endif
   }
   private var sidebar: some View {
     VStack(spacing: 0) {
+      #if os(macOS)
       HStack(spacing: 10) {
-        #if os(macOS)
-        Button {
-          toggleSidebar()
-        } label: { Image(systemName: "sidebar.left").font(.system(size: 17)) }
-        .buttonStyle(.plain)
-        .help(columnVisibility == .detailOnly ? "Закрепить боковую панель" : "Скрыть боковую панель")
-        .accessibilityLabel(columnVisibility == .detailOnly ? "Закрепить боковую панель" : "Скрыть боковую панель")
-        #endif
+        Button { toggleSidebar() } label: { Image(systemName: "sidebar.left").font(.system(size: 17)) }
+          .buttonStyle(.plain)
+          .help(columnVisibility == .detailOnly ? "Закрепить боковую панель" : "Скрыть боковую панель")
+          .accessibilityLabel(columnVisibility == .detailOnly ? "Закрепить боковую панель" : "Скрыть боковую панель")
         Spacer(minLength: 0)
-        VStack(alignment: .trailing, spacing: 2) {
-          Text("TrackIt").font(.headline)
-          Text("Make room for your life.").font(.caption2).foregroundStyle(.secondary)
-        }
-        Image(systemName: "scope").font(.title2).foregroundStyle(Color.accent)
+        sidebarBrand
       }.padding(18)
+      #endif
       List(selection: $destination) {
         Section("Пространство") {
           ForEach([Destination.today, .inbox, .calendar, .board], id: \.self) { route in
@@ -340,6 +465,19 @@ public struct LockedInRootView: View {
           }
         }
       }.listStyle(.sidebar).scrollContentBackground(.hidden)
+      if let profile = model.profileUser, model.authSession != nil {
+        Button { showProfile = true } label: {
+          HStack(spacing: 11) {
+            ProfileAvatar(emoji: profile.avatarEmoji, size: 38)
+            VStack(alignment: .leading, spacing: 3) {
+              Text(profile.username).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+              Text("Личный профиль").font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+          }.padding(10).frame(maxWidth: .infinity).contentShape(Rectangle())
+        }.buttonStyle(.plain).padding(.horizontal, 10).padding(.top, 6)
+      }
       HStack {
         Circle().fill(model.isOffline ? Color.orange : Color.green).frame(width: 6, height: 6)
         Text(model.settings.mode == .local ? "На этом устройстве" : "Сервер")
@@ -361,7 +499,52 @@ public struct LockedInRootView: View {
           Image(systemName: "gearshape")
         }.buttonStyle(.plain).accessibilityLabel("Настройки")
       }.padding(16)
-    }.navigationTitle("TrackIt")
+    }
+    #if os(iOS)
+    .navigationTitle("").navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+      ToolbarItem(placement: .topBarLeading) {
+        if usesPhoneNavigation && canNavigateBack {
+          Button(action: navigateBack) { Image(systemName: "chevron.left") }
+            .accessibilityLabel("Вернуться на предыдущий экран")
+        }
+      }
+      ToolbarItem(placement: .topBarLeading) { BugReportButton(model: model) }
+      ToolbarItem(placement: .topBarTrailing) { sidebarBrand }
+    }
+    #else
+    .navigationTitle("TrackIt")
+    #endif
+  }
+  private var sidebarBrand: some View {
+    HStack(spacing: 10) {
+      VStack(alignment: .trailing, spacing: 2) {
+        Text("TrackIt")
+          #if os(iOS)
+          .font(.system(size: 20, weight: .bold))
+          #else
+          .font(.headline)
+          #endif
+        Text("Make room for your life.")
+          #if os(iOS)
+          .font(.system(size: 9))
+          #else
+          .font(.caption2)
+          #endif
+          .foregroundStyle(.secondary).lineLimit(1)
+      }
+      Image(systemName: "scope")
+        #if os(iOS)
+        .font(.system(size: 24, weight: .regular))
+        #else
+        .font(.title2)
+        #endif
+        .foregroundStyle(Color.accent)
+    }
+    #if os(iOS)
+    .fixedSize(horizontal: true, vertical: false)
+    .padding(.horizontal, 8).frame(height: 40)
+    #endif
   }
   @ViewBuilder private var content: some View {
     if !model.hasLoaded {
@@ -370,8 +553,9 @@ public struct LockedInRootView: View {
       } else {
         VStack(spacing: 16) {
           EmptyState(
-            symbol: "network", title: "Подключимся к твоим планам",
-            message: model.syncWarning ?? model.errorMessage ?? "Выбери, где хранить задачи.")
+            symbol: model.isOffline ? "wifi.slash" : "exclamationmark.triangle",
+            title: model.isOffline ? "Нет связи с сервером" : "Не удалось загрузить данные",
+            message: model.syncWarning ?? model.errorMessage ?? RequestFailure.internalError.localizedDescription)
           HStack {
             Button("Повторить") { Task { await model.refresh() } }.buttonStyle(.bordered)
             Button("Настроить подключение") { showSettings = true }.buttonStyle(.borderedProminent)
@@ -386,7 +570,9 @@ public struct LockedInRootView: View {
           create: { date in
             taskPresentation = TaskPresentation(
               input: TaskInput(plannedAt: date, durationMinutes: 60))
-          })
+          }, back: canNavigateBack ? navigateBack : nil,
+          forward: canNavigateForward ? navigateForward : nil,
+          position: phoneCalendarPosition, positionChanged: rememberPhoneCalendar)
       case .board, .boardDetail:
         if let id = currentBoardID {
           BoardScreen(
@@ -422,6 +608,50 @@ public struct LockedInRootView: View {
       }
     }
   }
+  private func navigateBack() {
+    #if os(iOS)
+    if usesPhoneNavigation {
+      guard let entry = phoneHistory.back() else { return }
+      phoneDirection.sign = -1
+      restorePhoneScreen(entry)
+      return
+    }
+    #endif
+    guard let parent = destination?.parentDestination else { return }
+    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { destination = parent }
+  }
+  private func navigateForward() {
+    #if os(iOS)
+    guard usesPhoneNavigation, let entry = phoneHistory.forward() else { return }
+    phoneDirection.sign = 1
+    restorePhoneScreen(entry)
+    #endif
+  }
+  #if os(iOS)
+  private func finishPhoneQuickEntry() {
+    NotificationCenter.default.post(name: .quickTaskOutsideTap, object: CGPoint(x: -10_000, y: -10_000))
+  }
+  private func recordPhoneScreen() {
+    guard usesPhoneNavigation, !model.needsAuthentication,
+      currentPhoneScreen != phoneHistory.current.screen else { return }
+    phoneDirection.sign = 1
+    phoneHistory.visit(currentPhoneScreen,
+      calendarFocus: currentPhoneScreen == .section(.calendar) ? model.calendarFocus : nil)
+  }
+  private func restorePhoneScreen(_ entry: PhoneNavigationEntry) {
+    finishPhoneQuickEntry()
+    searchPresented = false
+    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+      switch entry.screen {
+      case .menu: compactColumn = .sidebar
+      case .section(let route):
+        if route == .calendar { model.calendarFocus = entry.calendarFocus }
+        destination = route
+        compactColumn = .detail
+      }
+    }
+  }
+  #endif
   private func handleShortcut(_ shortcut: AppShortcut) -> Bool {
     switch shortcut {
     case .undo:
@@ -433,7 +663,8 @@ public struct LockedInRootView: View {
       return true
     case .newInboxTask:
       guard model.canEdit else { return true }
-      taskPresentation = TaskPresentation(input: TaskInput())
+      if destination == .today || destination == .inbox { addTask() }
+      else { taskPresentation = TaskPresentation(input: TaskInput()) }
       return true
     case .sidebar:
       toggleSidebar()
@@ -451,6 +682,15 @@ public struct LockedInRootView: View {
     }
   }
   private func toggleSidebar() {
+    #if os(iOS)
+    if usesPhoneNavigation {
+      finishPhoneQuickEntry()
+      withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+        compactColumn = compactColumn == .sidebar ? .detail : .sidebar
+      }
+      return
+    }
+    #endif
     withAnimation(.easeInOut(duration: 0.14)) {
       columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
       hoverSidebar = false
@@ -461,6 +701,7 @@ public struct LockedInRootView: View {
   }
   private func addTask() {
     var input = TaskInput()
+    if destination == .today { input.plannedAt = .now }
     if case .list(let id) = destination { input.listID = id }
     if let id = currentBoardID,
       let selection = TrackerRules.selection(for: id, snapshot: model.snapshot)

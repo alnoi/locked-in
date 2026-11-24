@@ -80,7 +80,7 @@ struct TaskReorderGroup: View {
       }
     }
     .animation(.snappy(duration: 0.12, extraBounce: 0), value: ids)
-    .sheet(item: $newChild) { TaskEditor(model: model, presentation: $0) }
+    .sheet(item: $newChild) { TaskEditor(model: model, presentation: $0).bugReportAccess(model: model, reserveSpace: true) }
     .confirmationDialog("Удалить проект со всеми задачами?", isPresented: Binding(
       get: { deletingProject != nil }, set: { if !$0 { deletingProject = nil } }
     ), titleVisibility: .visible) {

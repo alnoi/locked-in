@@ -1,3 +1,4 @@
+import LockedInData
 import LockedInDomain
 import SwiftUI
 
@@ -45,7 +46,7 @@ struct ListEditor: View {
                                 do {
                                     try await model.mutate(.deleteList(id))
                                     dismiss()
-                                } catch { message = error.localizedDescription }
+                                } catch { message = UserFacingErrors.message(error) }
                             }
                         }
                     }
@@ -53,7 +54,9 @@ struct ListEditor: View {
                     Text("Все задачи списка будут перемещены во «Входящие».")
                 }
         }.onAppear { if input.boardID == nil { input.boardID = model.snapshot.generalBoard?.id } }
-            .interactiveDismissDisabled()
+            .interactiveDismissDisabled(saving || model.isMutating || confirmDelete)
+        .dismissOnOutsideClick(enabled: !saving && !model.isMutating && !confirmDelete)
+        .submitOnEnter(enabled: !saving && !model.isMutating && !confirmDelete) { Task { await save() } }
             #if os(macOS)
                 .frame(width: 500, height: 360)
             #endif
@@ -69,6 +72,6 @@ struct ListEditor: View {
             try TrackerRules.validate(value, id: presentation.listID, in: model.snapshot)
             try await model.mutate(.list(presentation.listID, value))
             dismiss()
-        } catch { message = error.localizedDescription }
+        } catch { message = UserFacingErrors.message(error) }
     }
 }

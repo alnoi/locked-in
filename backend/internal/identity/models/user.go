@@ -8,12 +8,16 @@ import (
 )
 
 type User struct {
-	ID        uuid.UUID
-	Username  string
-	TimeZone  string
-	CreatedAt time.Time
+	ID          uuid.UUID
+	AvatarEmoji string
+	Username    string
+	TimeZone    string
+	CreatedAt   time.Time
 }
-type Actor struct{ UserID uuid.UUID }
+type Actor struct {
+	UserID    uuid.UUID
+	SessionID uuid.UUID
+}
 
 func (a Actor) Require() error {
 	if a.UserID == uuid.Nil {

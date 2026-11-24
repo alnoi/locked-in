@@ -9,6 +9,7 @@ struct PlannerApp: App {
   var body: some Scene {
     WindowGroup("TrackIt") {
       LockedInRootView(model: model)
+        .trackItAccent()
         .preferredColorScheme(theme.colorScheme)
         .environment(\.locale, Locale(identifier: "ru_RU"))
         #if os(macOS)
@@ -20,6 +21,8 @@ struct PlannerApp: App {
     #if os(macOS)
       Window("Будильник", id: "task-alarm") {
         ReminderAlarmView(scheduler: model.alertScheduler)
+          .trackItAccent()
+          .bugReportAccess(model: model, reserveSpace: true)
           .preferredColorScheme(theme.colorScheme)
       }.windowResizability(.contentSize).defaultPosition(.center)
     #endif

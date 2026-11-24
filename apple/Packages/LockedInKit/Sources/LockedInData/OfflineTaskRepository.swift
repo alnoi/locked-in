@@ -62,14 +62,20 @@ public actor OfflineTaskRepository: TrackerRepository {
         guard let pending = archive?.pending.first(where: { $0.task.id == id }) else { continue }
         do { try await send(pending) }
         catch {
-          if SyncConnectionError.isRetryable(error) { offline = true; break }
-          issue = error.localizedDescription
+          if (error as? AuthenticationError) == .sessionExpired { throw error }
+          if SyncConnectionError.isRetryable(error) {
+            offline = UserFacingErrors.isConnectionFailure(error)
+            issue = offline ? nil : UserFacingErrors.message(error)
+            break
+          }
+          issue = UserFacingErrors.message(error)
         }
       }
       return archive!.snapshot
     } catch {
       if SyncConnectionError.isRetryable(error), let archive {
-        offline = true
+        offline = UserFacingErrors.isConnectionFailure(error)
+        issue = offline ? nil : UserFacingErrors.message(error)
         return archive.snapshot
       }
       throw error
@@ -135,7 +141,7 @@ public actor OfflineTaskRepository: TrackerRepository {
       let response: ChangeResult
       do { response = try await remote.apply(change) }
       catch {
-        if SyncConnectionError.isRetryable(error) {
+        if UserFacingErrors.isConnectionFailure(error) {
           offline = true
           throw SyncConnectionError.connectionRequired
         }

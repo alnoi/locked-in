@@ -16,7 +16,7 @@ let package = Package(
         .target(name: "LockedInActivity"),
         .target(name: "LockedInData", dependencies: ["LockedInDomain", "LockedInActivity"]),
         .target(name: "LockedInWidgetUI", dependencies: ["LockedInDomain", "LockedInData"]),
-        .target(name: "LockedInUI", dependencies: ["LockedInDomain", "LockedInData"]),
+        .target(name: "LockedInUI", dependencies: ["LockedInDomain", "LockedInData"], resources: [.process("Resources")]),
         .testTarget(name: "LockedInWidgetUITests", dependencies: ["LockedInWidgetUI"]),
         .testTarget(name: "LockedInDomainTests", dependencies: ["LockedInDomain"]),
         .testTarget(name: "LockedInUITests", dependencies: ["LockedInUI"]),

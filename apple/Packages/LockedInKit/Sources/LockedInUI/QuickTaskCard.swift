@@ -1,3 +1,4 @@
+import LockedInData
 import LockedInDomain
 import SwiftUI
 
@@ -9,6 +10,7 @@ struct QuickTaskCard: View {
   @Bindable var model: AppModel
   var listID: UUID?
   var requiredTags: [UUID] = []
+  var planForToday = false
   var reveal: () -> Void = {}
   @State private var title = ""
   @State private var tagIDs: [UUID] = []
@@ -92,7 +94,7 @@ struct QuickTaskCard: View {
   private var draft: TaskInput {
     TaskInput(
       title: title.trimmingCharacters(in: .whitespacesAndNewlines), listID: listID,
-      tagIDs: Array(selectedTags))
+      plannedAt: planForToday ? .now : nil, tagIDs: Array(selectedTags))
   }
   private func finishEditing() {
     guard !saving else { return }
@@ -118,6 +120,6 @@ struct QuickTaskCard: View {
       }
       errorMessage = nil
       if keepFocus { focused = true }
-    } catch { errorMessage = error.localizedDescription }
+    } catch { errorMessage = UserFacingErrors.message(error) }
   }
 }

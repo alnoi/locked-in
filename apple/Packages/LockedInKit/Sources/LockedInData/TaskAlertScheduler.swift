@@ -28,10 +28,7 @@ public final class TaskAlertScheduler {
     var signature: String
     var fireDate: Date
   }
-  private var snoozes: [String: Snooze] = {
-    guard let data = UserDefaults.standard.data(forKey: "taskReminderSnoozes") else { return [:] }
-    return (try? JSONDecoder().decode([String: Snooze].self, from: data)) ?? [:]
-  }()
+  private var snoozes: [String: Snooze] = [:]
   #if os(macOS)
     public var onReminder: ((TaskRecord) -> Bool)?
     private var testTimer: Timer?
@@ -43,6 +40,7 @@ public final class TaskAlertScheduler {
     private var sound: NSSound?
   #endif
   public init() {
+    reloadAccountPreferences()
     center.delegate = delegate
     Task { [weak self] in
       guard let self else { return }
@@ -58,6 +56,10 @@ public final class TaskAlertScheduler {
         actions: [UNNotificationAction(identifier: "stop", title: "Остановить")],
         intentIdentifiers: [])
     ])
+  }
+  public func reloadAccountPreferences() {
+    guard let data = UserDefaults.standard.data(forKey: "taskReminderSnoozes") else { snoozes = [:]; return }
+    snoozes = (try? JSONDecoder().decode([String: Snooze].self, from: data)) ?? [:]
   }
   public static var supportsSystemAlarm: Bool {
     #if os(iOS)

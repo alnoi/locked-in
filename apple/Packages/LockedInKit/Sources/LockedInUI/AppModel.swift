@@ -9,6 +9,9 @@ import OSLog
 @MainActor @Observable
 public final class AppModel {
   public var snapshot = Snapshot()
+  public var needsAuthentication = true
+  var authSession: AuthSession?
+  public var profileUser: UserRecord? { authSession?.user ?? (hasLoaded ? snapshot.user : nil) }
   var calendarFocus: CalendarTaskFocus?
   public private(set) var listOrderIDs: [UUID] = []
   public private(set) var taskOrderIDs: [UUID] = []
@@ -32,11 +35,11 @@ public final class AppModel {
   public var legacySource: (() throws -> [LegacyTask])?
   let actionHistory = ActionHistory()
   var undoRevision = 0
-  private var repository: (any TrackerRepository)?
+  var repository: (any TrackerRepository)?
   @ObservationIgnored private var widgetObserver: WidgetCommandObserver?
   private var started = false
   private var refreshing = false
-  private var mutationRevision = 0
+  var mutationRevision = 0
   #if os(macOS)
     private let reminderPresenter = MacReminderPresenter()
   #endif
@@ -61,14 +64,32 @@ public final class AppModel {
     widgetObserver = WidgetCommandObserver { [weak self] in
       Task { @MainActor in await self?.refresh() }
     }
+    if settings.mode == .server {
+      do {
+        guard let session = try AuthSessionStore.active(address: settings.serverAddress), session.expiresAt > .now else {
+          needsAuthentication = true
+          try WidgetStore.shared?.clearContext()
+          WidgetCenter.shared.reloadAllTimelines()
+          return
+        }
+        authSession = session
+        settings.accountID = session.user.id
+        ProfilePreferences.activate(settings.identity, inheritLegacy: settings.hasLegacyProfileData)
+        ProfilePreferences.migrateLegacy(settings: settings)
+        alertScheduler.reloadAccountPreferences()
+      } catch { errorMessage = friendly(error); needsAuthentication = true; return }
+    }
+    needsAuthentication = false
     do { repository = try settings.repository() } catch {
-      errorMessage = error.localizedDescription
+      errorMessage = friendly(error)
       return
     }
     if settings.mode == .server, let cached = try? Data(contentsOf: cacheURL),
-      let value = try? JSONCodec.decoder().decode(Snapshot.self, from: cached)
+      let value = try? JSONCodec.decoder().decode(Snapshot.self, from: cached),
+      value.user.id == authSession?.user.id
     {
       snapshot = value
+      if let user = authSession?.user { snapshot.user = user }
       applyLocalListOrder()
       hasLoaded = true
       isOffline = true
@@ -76,11 +97,14 @@ public final class AppModel {
     if let sync = repository as? OfflineTaskRepository {
       do {
         if let restored = try await sync.restore() {
-          snapshot = restored; applyLocalListOrder(); hasLoaded = true
+          guard settings.mode != .server || restored.user.id == authSession?.user.id else { throw AuthenticationError.sessionExpired }
+          snapshot = restored
+          if let user = authSession?.user { snapshot.user = user }
+          applyLocalListOrder(); hasLoaded = true
         }
         receiveSyncStatus(await sync.status())
       } catch {
-        errorMessage = "Не удалось прочитать локальную очередь. Данные сохранены; не удаляй хранилище. " + error.localizedDescription
+        errorMessage = UserFacingErrors.message(error)
         repository = nil
         hasLoaded = false
         return
@@ -100,6 +124,14 @@ public final class AppModel {
       let value = try await repository.load()
       let status = await (repository as? OfflineTaskRepository)?.status()
       guard revision == mutationRevision, !isMutating else { return }
+      guard settings.mode != .server || value.user.id == authSession?.user.id else { throw AuthenticationError.sessionExpired }
+      if var session = authSession,
+        session.user.username != value.user.username || session.user.avatarEmoji != value.user.avatarEmoji
+          || session.user.timeZone != value.user.timeZone {
+        session.user = value.user
+        try AuthSessionStore.save(session, address: settings.serverAddress)
+        authSession = session
+      }
       snapshot = value
       applyLocalListOrder()
       hasLoaded = true
@@ -111,7 +143,9 @@ public final class AppModel {
       cacheSnapshot()
       await refreshReminders()
     } catch {
-      isOffline = settings.mode == .server
+      guard revision == mutationRevision else { return }
+      if (error as? AuthenticationError) == .sessionExpired { await requireAuthentication(error); return }
+      isOffline = settings.mode == .server && UserFacingErrors.isConnectionFailure(error)
       if !hasLoaded { errorMessage = friendly(error) }
       else { syncWarning = friendly(error) }
     }
@@ -121,7 +155,7 @@ public final class AppModel {
     isOffline = status.isOffline
     syncWarning = status.issue
   }
-  private func setPendingTaskIDs(_ ids: Set<UUID>) {
+  func setPendingTaskIDs(_ ids: Set<UUID>) {
     pendingFlagTask?.cancel()
     unsyncedTaskIDs = ids
     pendingFlags.update(ids, at: .now)
@@ -137,9 +171,28 @@ public final class AppModel {
     }
   }
   public func connect(_ proposed: ConnectionSettings) async throws {
+    var proposed = proposed
     guard !isMutating, !isLoading, !actionHistory.isUndoing else {
       throw TrackerError.conflict("Дождись завершения текущей операции.")
     }
+    let selectedSession = proposed.mode == .server ? try AuthSessionStore.active(address: proposed.serverAddress) : nil
+    if proposed.mode == .server {
+      guard let selectedSession, selectedSession.expiresAt > .now else {
+        await requireAuthentication(nil)
+        proposed.accountID = nil
+        settings = proposed; proposed.save()
+        return
+      }
+      proposed.accountID = selectedSession.user.id
+    }
+    if settings.identity != proposed.identity { await clearProfilePresentation() }
+    authSession = selectedSession
+    if proposed.mode == .server {
+      ProfilePreferences.activate(proposed.identity, inheritLegacy: proposed.hasLegacyProfileData)
+      ProfilePreferences.migrateLegacy(settings: proposed)
+      alertScheduler.reloadAccountPreferences()
+    }
+    needsAuthentication = false
     isLoading = true
     defer { isLoading = false }
     let changedSource = settings.identity != proposed.identity
@@ -162,20 +215,25 @@ public final class AppModel {
       repository = next
       if let sync = next as? OfflineTaskRepository {
         if let restored = try await sync.restore() {
+          guard proposed.mode != .server || restored.user.id == authSession?.user.id else { throw AuthenticationError.sessionExpired }
           snapshot = restored
+          if let user = authSession?.user { snapshot.user = user }
           hasLoaded = true
           applyLocalListOrder()
         }
         receiveSyncStatus(await sync.status())
       }
-      snapshot = try await next.load()
+      let loaded = try await next.load()
+      guard proposed.mode != .server || loaded.user.id == authSession?.user.id else { throw AuthenticationError.sessionExpired }
+      snapshot = loaded
       hasLoaded = true
       applyLocalListOrder()
       if let sync = next as? OfflineTaskRepository { receiveSyncStatus(await sync.status()) }
       else { isOffline = false; setPendingTaskIDs([]) }
       lastRefresh = .now
     } catch {
-      isOffline = proposed.mode == .server
+      if (error as? AuthenticationError) == .sessionExpired { await requireAuthentication(error); return }
+      isOffline = proposed.mode == .server && UserFacingErrors.isConnectionFailure(error)
       syncWarning = friendly(error)
     }
     if hasLoaded {
@@ -229,6 +287,7 @@ public final class AppModel {
       return result
     } catch {
       if let sync = repository as? OfflineTaskRepository { receiveSyncStatus(await sync.status()) }
+      if (error as? AuthenticationError) == .sessionExpired { await requireAuthentication(error) }
       throw TrackerError.validation(friendly(error))
     }
   }
@@ -256,15 +315,15 @@ public final class AppModel {
     var warnings: [String] = []
     do {
       try await alertScheduler.reconcile(snapshot.tasks, tags: snapshot.tags, space: space)
-    } catch { warnings.append(error.localizedDescription) }
+    } catch { warnings.append(friendly(error)) }
     do {
       try await workdaySummary.reconcile(snapshot.tasks, space: space)
-    } catch { warnings.append(error.localizedDescription) }
+    } catch { warnings.append(friendly(error)) }
     reminderWarning = warnings.isEmpty ? nil : warnings.joined(separator: "\n")
   }
 
   public func perform(_ change: Change) {
-    Task { do { try await mutate(change) } catch { errorMessage = error.localizedDescription } }
+    Task { do { try await mutate(change) } catch { errorMessage = friendly(error) } }
   }
   public func move(_ id: UUID, to listID: UUID?, includingProject: Bool = true) {
     guard let selected = snapshot.tasks.first(where: { $0.id == id }) else { return }
@@ -452,21 +511,34 @@ public final class AppModel {
   }
   public var canEdit: Bool { hasLoaded && !isLoading }
   public var canEditCollections: Bool { canEdit && (isOffline || visibleUnsyncedTaskIDs.isEmpty) }
-  public func friendly(_ error: Error) -> String {
-    if (error as NSError).domain == UNErrorDomain {
-      return
-        "Задача сохранится, но уведомления пока недоступны. Разреши их для TrackIt в системных настройках уведомлений."
-    }
-    if let error = error as? URLError {
-      switch error.code {
-      case .cannotConnectToHost, .cannotFindHost, .notConnectedToInternet, .timedOut,
-        .networkConnectionLost:
-        return
-          "Не удалось связаться с сервером. Проверь, что бэкенд запущен, или выбери хранение на устройстве."
-      default: return "Ошибка подключения. Проверь адрес сервера и попробуй снова."
-      }
-    }
-    return error.localizedDescription
+  public func friendly(_ error: Error) -> String { UserFacingErrors.message(error) }
+
+  func clearProfilePresentation() async {
+    let space = settings.identity + ":" + snapshot.user.id.uuidString
+    calendarFocus = nil
+    repository = nil
+    mutationRevision += 1
+    setPendingTaskIDs([])
+    hasLoaded = false
+    isLoading = false
+    isOffline = false
+    syncWarning = nil
+    reminderWarning = nil
+    snapshot = Snapshot()
+    listOrderIDs = []; taskOrderIDs = []
+    actionHistory.prepare(source: "signed-out")
+    dayProgress.setOverdueVisible(false)
+    dayProgress.update(tasks: [], space: "signed-out")
+    try? WidgetStore.shared?.clearContext()
+    WidgetCenter.shared.reloadAllTimelines()
+    for task in alertScheduler.ringing { alertScheduler.stop(task.id) }
+    #if os(macOS)
+    reminderPresenter.dismissMissing([])
+    #endif
+    do { try await alertScheduler.reconcile([], space: space) }
+    catch { reminderWarning = friendly(error) }
+    do { try await workdaySummary.reconcile([], space: space) }
+    catch { reminderWarning = friendly(error) }
   }
   private func applyLocalListOrder() {
     listOrderIDs = ListOrderPreferences.orderedIDs(
@@ -516,7 +588,7 @@ public final class AppModel {
       }
     } catch { syncWarning = "Не удалось применить изменение из виджета: " + friendly(error) }
   }
-  private func cacheSnapshot() {
+  func cacheSnapshot() {
     if hasLoaded { dayProgress.update(tasks: snapshot.tasks, space: settings.identity + ":" + snapshot.user.id.uuidString) }
     publishWidgets()
     guard settings.mode == .server else { return }
@@ -526,7 +598,7 @@ public final class AppModel {
       try JSONCodec.encoder().encode(snapshot).write(to: cacheURL, options: .atomic)
     } catch {
       errorMessage =
-        "Данные на сервере сохранены, но не удалось обновить локальную копию: \(error.localizedDescription)"
+        UserFacingErrors.message(error)
     }
   }
 }

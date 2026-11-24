@@ -21,6 +21,7 @@ struct TaskListScreen: View {
       return false
     }
   }
+  private var hasQuickEntry: Bool { destination == .today || destination == .inbox }
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       HStack {
@@ -38,7 +39,7 @@ struct TaskListScreen: View {
         )
         .disabled(!model.canEdit)
       }.padding(24)
-      if tasks.isEmpty {
+      if tasks.isEmpty && !hasQuickEntry {
         EmptyState(
           symbol: search.isEmpty ? "checklist" : "magnifyingglass",
           title: search.isEmpty ? "Здесь пока спокойно" : "Ничего не найдено",
@@ -54,15 +55,42 @@ struct TaskListScreen: View {
           }.padding(.horizontal, 16).padding(.vertical, 8)
         }.refreshable { await model.refresh() }
       } else {
+        ScrollViewReader { proxy in
+        #if os(iOS)
+        ScrollView {
+          LazyVStack(spacing: 6) {
+            taskCards
+            quickEntry(proxy)
+          }.padding(.horizontal, 16).padding(.vertical, 8)
+        }.refreshable { await model.refresh() }
+        #else
         List {
-          TaskReorderGroup(model: model, tasks: tasks, session: taskDragSession, open: open, reorderEnabled: destination != .completed,
-            includeHiddenProjectParents: destination != .today && destination != .overdue && destination != .completed,
-            newestCompletedFirst: destination == .completed)
+          taskCards
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+          quickEntry(proxy)
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
         }.listStyle(.plain).refreshable { await model.refresh() }
+        #endif
+        }
       }
     }.onDisappear { taskDragSession.reset() }
+  }
+  private var taskCards: some View {
+    TaskReorderGroup(model: model, tasks: tasks, session: taskDragSession, open: open,
+      reorderEnabled: destination != .completed,
+      includeHiddenProjectParents: destination != .today && destination != .overdue && destination != .completed,
+      newestCompletedFirst: destination == .completed)
+  }
+  @ViewBuilder private func quickEntry(_ proxy: ScrollViewProxy) -> some View {
+    if hasQuickEntry {
+      QuickTaskCard(model: model, listID: nil, planForToday: destination == .today) {
+        withAnimation(.easeOut(duration: 0.1)) {
+          proxy.scrollTo(QuickTaskScrollTarget(listID: nil), anchor: .bottom)
+        }
+      }.id(QuickTaskScrollTarget(listID: nil))
+    }
   }
   private var subtitle: String {
     if destination == .overdue { return "Пропущенные планы и задачи с истёкшим дедлайном." }

@@ -1,3 +1,4 @@
+import LockedInData
 #if os(macOS)
   import AppKit
   import LockedInDomain
@@ -7,6 +8,8 @@
   final class MacReminderPresenter {
     private var windows: [UUID: NSPanel] = [:]
     private var dismissals: [UUID: Task<Void, Never>] = [:]
+    private enum PauseReason { case hover, drag, action }
+    private var pauses: [UUID: Set<PauseReason>] = [:]
     func show(
       task: TaskRecord, tags: [TagRecord], complete: @escaping @MainActor () async throws -> Void,
       snooze: @escaping @MainActor () async throws -> Void
@@ -27,26 +30,38 @@
       panel.hidesOnDeactivate = false
       panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
       let selected = tags.filter { task.tagIDs.contains($0.id) }
+      panel.dismissRequested = { [weak self] in self?.dismiss(task.id) }
+      panel.dragging = { [weak self] value in self?.pause(task.id, reason: .drag, active: value) }
       panel.contentView = NSHostingView(
         rootView: ReminderToast(
           task: task, tags: selected, complete: complete, snooze: snooze,
           dismiss: { [weak self] in self?.dismiss(task.id) },
-          hover: { [weak self] value in self?.scheduleDismissal(task.id, paused: value) }
-        ).preferredColorScheme(.dark))
+          hover: { [weak self] value in self?.pause(task.id, reason: .hover, active: value) },
+          working: { [weak self] value in self?.pause(task.id, reason: .action, active: value) },
+          move: { [weak panel] offset in panel?.dragMouse(by: offset) },
+          release: { [weak panel] offset in panel?.releaseMouse(projectedExtra: offset) }
+        ).trackItAccent().preferredColorScheme(.dark))
       let occupied = windows.values.map { $0.frame.minY }
       var top = screen.visibleFrame.maxY - 18
       while occupied.contains(where: { abs($0 - (top - 190)) < 195 }) { top -= 198 }
       panel.setFrameOrigin(NSPoint(x: screen.visibleFrame.maxX - 368, y: top - 190))
       windows[task.id] = panel
       panel.orderFrontRegardless()
-      scheduleDismissal(task.id, paused: false)
+      scheduleDismissal(task.id)
       return true
     }
     func dismiss(_ id: UUID) {
       dismissals.removeValue(forKey: id)?.cancel()
+      pauses.removeValue(forKey: id)
       guard let panel = windows.removeValue(forKey: id) else { return }
+      panel.ignoresMouseEvents = true
+      let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
       NSAnimationContext.runAnimationGroup { context in
-        context.duration = 0.18
+        context.duration = reduceMotion ? 0.1 : 0.2
+        if !reduceMotion {
+          let edge = panel.screen?.visibleFrame.maxX ?? panel.frame.maxX
+          panel.animator().setFrameOrigin(NSPoint(x: max(edge + 12, panel.frame.minX + 350), y: panel.frame.minY))
+        }
         panel.animator().alphaValue = 0
       } completionHandler: {
         Task { @MainActor in panel.close() }
@@ -57,11 +72,17 @@
         dismiss(id)
       }
     }
-    private func scheduleDismissal(_ id: UUID, paused: Bool) {
+    private func pause(_ id: UUID, reason: PauseReason, active: Bool) {
+      guard windows[id] != nil else { return }
+      if active { pauses[id, default: []].insert(reason) }
+      else { pauses[id]?.remove(reason) }
+      scheduleDismissal(id)
+    }
+    private func scheduleDismissal(_ id: UUID) {
       dismissals.removeValue(forKey: id)?.cancel()
-      guard !paused else { return }
+      guard pauses[id, default: []].isEmpty else { return }
       dismissals[id] = Task { [weak self] in
-        do { try await Task.sleep(for: .seconds(14)) } catch { return }
+        do { try await Task.sleep(for: .seconds(6)) } catch { return }
         self?.dismiss(id)
       }
     }
@@ -69,6 +90,70 @@
   private final class ReminderPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+    var dismissRequested: (() -> Void)?
+    var dragging: ((Bool) -> Void)?
+    private var restingOrigin: NSPoint?
+    private var mouseStartX: CGFloat?
+    private var scrollOffset: CGFloat = 0
+    private var scrollEnd: Task<Void, Never>?
+
+    func dragMouse(by initialOffset: CGFloat) {
+      let pointer = NSEvent.mouseLocation.x
+      if mouseStartX == nil { mouseStartX = pointer - initialOffset }
+      move(by: pointer - (mouseStartX ?? pointer))
+    }
+    func releaseMouse(projectedExtra: CGFloat) {
+      let distance = mouseStartX.map { NSEvent.mouseLocation.x - $0 } ?? 0
+      mouseStartX = nil
+      release(projectedOffset: distance + projectedExtra)
+    }
+    func move(by offset: CGFloat) {
+      guard !ignoresMouseEvents else { return }
+      if restingOrigin == nil { restingOrigin = frame.origin; dragging?(true) }
+      guard let restingOrigin else { return }
+      let distance = max(0, offset)
+      setFrameOrigin(NSPoint(x: restingOrigin.x + distance, y: restingOrigin.y))
+      alphaValue = 1 - min(0.4, distance / 500)
+    }
+    func release(projectedOffset: CGFloat) {
+      scrollEnd?.cancel()
+      scrollEnd = nil
+      scrollOffset = 0
+      guard let origin = restingOrigin else { return }
+      restingOrigin = nil
+      if frame.minX - origin.x >= 70 || projectedOffset >= 140 {
+        dismissRequested?()
+      } else {
+        NSAnimationContext.runAnimationGroup { context in
+          context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0.1 : 0.18
+          animator().setFrameOrigin(origin)
+          animator().alphaValue = 1
+        }
+      }
+      dragging?(false)
+    }
+    override func scrollWheel(with event: NSEvent) {
+      guard !ignoresMouseEvents, event.momentumPhase.isEmpty else { return }
+      guard restingOrigin != nil || abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) else {
+        super.scrollWheel(with: event)
+        return
+      }
+      scrollOffset += event.scrollingDeltaX
+      move(by: scrollOffset)
+      if event.phase.contains(.cancelled) {
+        move(by: 0)
+        release(projectedOffset: 0)
+      } else if event.phase.contains(.ended) {
+        release(projectedOffset: scrollOffset)
+      } else {
+        scrollEnd?.cancel()
+        scrollEnd = Task { @MainActor [weak self] in
+          do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
+          guard let self else { return }
+          self.release(projectedOffset: self.scrollOffset)
+        }
+      }
+    }
   }
   private struct ReminderToast: View {
     let task: TaskRecord
@@ -77,9 +162,12 @@
     var snooze: @MainActor () async throws -> Void
     var dismiss: () -> Void
     var hover: (Bool) -> Void
+    var working: (Bool) -> Void
+    var move: (CGFloat) -> Void
+    var release: (CGFloat) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
-    @State private var working = false
+    @State private var isWorking = false
     @State private var error: String?
     private var accent: Color { Color(hex: tags.first?.color ?? "#A398FF") }
     var body: some View {
@@ -130,7 +218,7 @@
             .buttonStyle(.plain).background(
               .white.opacity(0.06), in: RoundedRectangle(cornerRadius: 11)
             ).foregroundStyle(.secondary)
-          }.font(.system(size: 12, weight: .medium)).disabled(working)
+          }.font(.system(size: 12, weight: .medium)).disabled(isWorking)
         }.padding(14)
       }.padding(.leading, 10).frame(width: 328, height: 164)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
@@ -146,15 +234,24 @@
           ) { appeared = true }
         }
         .onHover(perform: hover)
+        .simultaneousGesture(
+          DragGesture(minimumDistance: 8)
+            .onChanged { value in
+              guard !isWorking, abs(value.translation.width) > abs(value.translation.height) else { return }
+              move(value.translation.width)
+            }
+            .onEnded { value in release(value.predictedEndTranslation.width - value.translation.width) }
+        )
     }
     private func run(_ action: @escaping @MainActor () async throws -> Void) {
-      working = true
+      isWorking = true
+      working(true)
       Task { @MainActor in
-        defer { working = false }
+        defer { isWorking = false; working(false) }
         do {
           try await action()
           dismiss()
-        } catch { self.error = error.localizedDescription }
+        } catch { self.error = UserFacingErrors.message(error) }
       }
     }
   }

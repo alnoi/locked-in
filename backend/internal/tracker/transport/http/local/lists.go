@@ -3,6 +3,7 @@ package local
 import (
 	tracker_genapi "github.com/alnoi/locked-in/backend/generated/service/tracker"
 	"github.com/alnoi/locked-in/backend/internal/app/apperr"
+	apphttp "github.com/alnoi/locked-in/backend/internal/app/http"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -13,7 +14,7 @@ func (h *Handlers) GetLists(c *gin.Context, params tracker_genapi.GetListsParams
 		apperr.WriteError(c, err)
 		return
 	}
-	out, err := h.usecase.GetLists(c.Request.Context(), h.actor(), filters)
+	out, err := h.usecase.GetLists(c.Request.Context(), h.actor(c), filters)
 	if err != nil {
 		apperr.WriteError(c, err)
 		return
@@ -21,7 +22,7 @@ func (h *Handlers) GetLists(c *gin.Context, params tracker_genapi.GetListsParams
 	c.JSON(200, mapListsToOut(out))
 }
 func (h *Handlers) GetList(c *gin.Context, id uuid.UUID) {
-	out, err := h.usecase.GetList(c.Request.Context(), h.actor(), id)
+	out, err := h.usecase.GetList(c.Request.Context(), h.actor(c), id)
 	if err != nil {
 		apperr.WriteError(c, err)
 		return
@@ -30,7 +31,7 @@ func (h *Handlers) GetList(c *gin.Context, id uuid.UUID) {
 }
 func (h *Handlers) CreateList(c *gin.Context) {
 	var request tracker_genapi.CreateListIn
-	if err := decodeJSON(c, &request); err != nil {
+	if err := apphttp.DecodeJSON(c, &request); err != nil {
 		apperr.WriteError(c, err)
 		return
 	}
@@ -39,7 +40,7 @@ func (h *Handlers) CreateList(c *gin.Context) {
 		apperr.WriteError(c, err)
 		return
 	}
-	out, err := h.usecase.CreateList(c.Request.Context(), h.actor(), &in)
+	out, err := h.usecase.CreateList(c.Request.Context(), h.actor(c), &in)
 	if err != nil {
 		apperr.WriteError(c, err)
 		return
@@ -48,7 +49,7 @@ func (h *Handlers) CreateList(c *gin.Context) {
 }
 func (h *Handlers) UpdateList(c *gin.Context, id uuid.UUID) {
 	var request tracker_genapi.UpdateListIn
-	if err := decodeJSON(c, &request); err != nil {
+	if err := apphttp.DecodeJSON(c, &request); err != nil {
 		apperr.WriteError(c, err)
 		return
 	}
@@ -58,7 +59,7 @@ func (h *Handlers) UpdateList(c *gin.Context, id uuid.UUID) {
 		return
 	}
 	in.ID = id
-	out, err := h.usecase.UpdateList(c.Request.Context(), h.actor(), &in)
+	out, err := h.usecase.UpdateList(c.Request.Context(), h.actor(c), &in)
 	if err != nil {
 		apperr.WriteError(c, err)
 		return
@@ -66,7 +67,7 @@ func (h *Handlers) UpdateList(c *gin.Context, id uuid.UUID) {
 	c.JSON(200, mapListToOut(out))
 }
 func (h *Handlers) DeleteList(c *gin.Context, id uuid.UUID) {
-	if err := h.usecase.DeleteList(c.Request.Context(), h.actor(), id); err != nil {
+	if err := h.usecase.DeleteList(c.Request.Context(), h.actor(c), id); err != nil {
 		apperr.WriteError(c, err)
 		return
 	}
@@ -74,7 +75,7 @@ func (h *Handlers) DeleteList(c *gin.Context, id uuid.UUID) {
 }
 
 func (h *Handlers) RestoreList(c *gin.Context, id uuid.UUID) {
-	out, err := h.usecase.RestoreList(c.Request.Context(), h.actor(), id)
+	out, err := h.usecase.RestoreList(c.Request.Context(), h.actor(c), id)
 	if err != nil {
 		apperr.WriteError(c, err)
 		return

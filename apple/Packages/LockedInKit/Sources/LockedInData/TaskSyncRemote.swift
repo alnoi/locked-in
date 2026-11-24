@@ -7,17 +7,17 @@ public protocol TaskSyncRemote: TrackerRepository {
 public enum SyncConnectionError: Error, LocalizedError {
   case serverUnavailable
   case connectionRequired
+  case internalFailure
   public var errorDescription: String? {
     switch self {
-    case .serverUnavailable: "Сервер временно недоступен. Изменения сохранены на устройстве."
+    case .serverUnavailable: RequestFailure.noConnection.localizedDescription
     case .connectionRequired: "Для этого действия нужна связь с сервером. Подключись и попробуй ещё раз."
+    case .internalFailure: RequestFailure.internalError.localizedDescription
     }
   }
   public static func isRetryable(_ error: Error) -> Bool {
     if error is SyncConnectionError { return true }
-    guard let error = error as? URLError else { return false }
-    return [.cannotConnectToHost, .cannotFindHost, .notConnectedToInternet, .timedOut,
-      .networkConnectionLost, .dnsLookupFailed, .dataNotAllowed, .internationalRoamingOff].contains(error.code)
+    return UserFacingErrors.isConnectionFailure(error)
   }
 }
 public struct TaskSyncStatus: Sendable {
