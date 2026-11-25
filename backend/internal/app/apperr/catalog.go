@@ -9,6 +9,8 @@ var publicErrors = map[ErrorCode]Error{
 	CodeUnauthorized:       {CodeUnauthorized, 401, "Your session has expired. Please sign in again."},
 	CodeRateLimited:        {CodeRateLimited, 429, "Too many attempts. Please wait and try again."},
 	CodeInvalidCredentials: {CodeInvalidCredentials, 401, "Incorrect username or password."},
+	CodeUserNotFound:       {CodeUserNotFound, 401, "No user with this username was found."},
+	CodeWrongPassword:      {CodeWrongPassword, 401, "Incorrect password."},
 	CodeUsernameTaken:      {CodeUsernameTaken, 409, "This username is already taken."},
 	CodeInvalidUsername:    {CodeInvalidUsername, 400, "Username must contain 3 to 32 Latin letters, numbers, underscores, dots or hyphens."},
 	CodeInvalidPassword:    {CodeInvalidPassword, 400, "Password must contain at least 8 characters and no more than 256 bytes."},

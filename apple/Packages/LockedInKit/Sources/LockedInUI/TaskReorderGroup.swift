@@ -74,13 +74,13 @@ struct TaskReorderGroup: View {
           }
           .contentShape(Rectangle())
           .modifier(ReorderDragSource(id: id, provider: { begin(id) }, enabled: reorderEnabled))
-          .opacity(session.source == id ? 0.18 : 1)
+          .modifier(ReorderSourceAppearance(active: session.source == id))
           .modifier(TaskPlacementTarget(model: model, target: task,
             session: session, listDrop: listDrop, enabled: reorderEnabled))
       }
     }
     .animation(.snappy(duration: 0.12, extraBounce: 0), value: ids)
-    .sheet(item: $newChild) { TaskEditor(model: model, presentation: $0).bugReportAccess(model: model, reserveSpace: true) }
+    .sheet(item: $newChild) { TaskEditor(model: model, presentation: $0) }
     .confirmationDialog("Удалить проект со всеми задачами?", isPresented: Binding(
       get: { deletingProject != nil }, set: { if !$0 { deletingProject = nil } }
     ), titleVisibility: .visible) {
@@ -116,7 +116,7 @@ struct TaskReorderGroup: View {
           TaskRow(model: model, task: child, open: { open(child) }, restrictedMenu: restrictedMenu)
             .padding(.leading, 16)
             .modifier(ReorderDragSource(id: child.id, provider: { begin(child.id) }, enabled: reorderEnabled))
-            .opacity(session.source == child.id ? 0.18 : 1)
+            .modifier(ReorderSourceAppearance(active: session.source == child.id))
             .modifier(TaskPlacementTarget(model: model, target: child,
               session: session, listDrop: listDrop, enabled: reorderEnabled))
             .transition(.scale(scale: 0.88).combined(with: .opacity))

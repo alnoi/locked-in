@@ -57,3 +57,9 @@ type linksRepository interface {
 type transactionManager interface {
 	WithinTransaction(context.Context, func(context.Context) error) error
 }
+
+type taskOrderRepository interface {
+	GetTaskOrders(context.Context, models.GetTaskOrdersFilters) ([]models.TaskOrder, error)
+	CreateTaskOrder(context.Context, *models.CreateTaskOrderIn) (models.TaskOrder, error)
+	UpdateTaskOrder(context.Context, *models.UpdateTaskOrderIn) (models.TaskOrder, error)
+}

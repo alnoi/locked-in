@@ -1,0 +1,64 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "srgb:1.00000,1.00000,1.00000,1.00000"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.03137,0.03137,0.03137,1.00000"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "TrackIt artwork",
+      "layers": [
+        {
+          "name": "TrackIt Light",
+          "image-name": "TrackIt-Light.png",
+          "glass": false,
+          "fill": "automatic",
+          "opacity-specializations": [
+            {
+              "value": 1
+            },
+            {
+              "appearance": "dark",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "name": "TrackIt Dark",
+          "image-name": "TrackIt-Dark.png",
+          "glass": false,
+          "fill": "automatic",
+          "opacity-specializations": [
+            {
+              "value": 0
+            },
+            {
+              "appearance": "dark",
+              "value": 1
+            }
+          ]
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0
+      },
+      "specular": false,
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

@@ -1,5 +1,12 @@
 import SwiftUI
 
+struct ReorderSourceAppearance: ViewModifier {
+  var active: Bool
+  func body(content: Content) -> some View {
+    content.opacity(active ? 0.18 : 1)
+  }
+}
+
 struct ReorderDragSource: ViewModifier {
   var id: UUID
   var provider: () -> NSItemProvider
@@ -131,7 +138,13 @@ final class LandingDragView: NSView, NSDraggingSource {
       let down = window.convertPoint(toScreen: Self.downPoint)
       grabOffset = NSPoint(x: down.x - originalFrame.minX, y: down.y - originalFrame.minY)
       guard let payload = provider as? ListDragProvider else { return event }
-      let item = NSDraggingItem(pasteboardWriter: payload.text as NSString)
+      let writer: NSPasteboardWriting
+      if let typeIdentifier = payload.typeIdentifier {
+        let boardItem = NSPasteboardItem()
+        boardItem.setString(payload.text, forType: NSPasteboard.PasteboardType(typeIdentifier))
+        writer = boardItem
+      } else { writer = payload.text as NSString }
+      let item = NSDraggingItem(pasteboardWriter: writer)
       let localFrame = convert(window.convertFromScreen(originalFrame), from: nil)
       // The native session carries only the payload. Its destination animation is invisible.
       item.setDraggingFrame(localFrame, contents: NSImage(size: originalFrame.size))

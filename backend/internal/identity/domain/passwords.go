@@ -39,7 +39,7 @@ func VerifyPassword(encoded, password string) error {
 	}
 	actual := argon2.IDKey([]byte(password), salt, 3, 64*1024, 1, 32)
 	if subtle.ConstantTimeCompare(actual, expected) != 1 {
-		return apperr.ErrInvalidCredentials()
+		return apperr.ErrWrongPassword()
 	}
 	return nil
 }

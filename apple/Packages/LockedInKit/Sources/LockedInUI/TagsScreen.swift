@@ -37,7 +37,7 @@ struct TagsScreen: View {
           }.padding(.horizontal, 24).padding(.bottom, 24).padding(.top, 2)
         }
       }
-    }.sheet(item: $editor) { TagEditor(model: model, presentation: $0).bugReportAccess(model: model, reserveSpace: true) }
+    }.sheet(item: $editor) { TagEditor(model: model, presentation: $0) }
   }
   private func tile(_ tag: TagRecord, count: Int) -> some View {
     let tint = Color(hex: tag.color)

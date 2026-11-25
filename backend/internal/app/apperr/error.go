@@ -14,6 +14,8 @@ func ErrUnauthorized() *Error       { return publicError(CodeUnauthorized) }
 func ErrInternal() *Error           { return publicError(CodeInternal) }
 func ErrRateLimited() *Error        { return publicError(CodeRateLimited) }
 func ErrInvalidCredentials() *Error { return publicError(CodeInvalidCredentials) }
+func ErrUserNotFound() *Error       { return publicError(CodeUserNotFound) }
+func ErrWrongPassword() *Error      { return publicError(CodeWrongPassword) }
 func ErrUsernameTaken() *Error      { return publicError(CodeUsernameTaken) }
 func ErrInvalidUsername() *Error    { return publicError(CodeInvalidUsername) }
 func ErrInvalidPassword() *Error    { return publicError(CodeInvalidPassword) }

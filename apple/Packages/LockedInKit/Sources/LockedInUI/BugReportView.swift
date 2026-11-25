@@ -15,6 +15,8 @@ struct BugReportView: View {
   @State private var id = UUID()
   @State private var description = ""
   @State private var screenshot: Data?
+  @State private var attachmentError: String?
+  @State private var dropTargeted = false
   @State private var message: String?
   @State private var sending = false
   @State private var importing = false
@@ -44,17 +46,13 @@ struct BugReportView: View {
             }
             VStack(alignment: .leading, spacing: 8) {
               Text("Что произошло?").font(.subheadline.weight(.semibold))
-              ZStack(alignment: .topLeading) {
-                if description.isEmpty {
-                  Text("Что ты делал и что получилось вместо ожидаемого?")
-                    .font(.body).foregroundStyle(.tertiary).padding(.horizontal, 5).padding(.vertical, 8).allowsHitTesting(false)
-                }
-                TextEditor(text: $description).font(.body).scrollContentBackground(.hidden)
-                  .frame(minHeight: 124).accessibilityLabel("Описание ошибки")
-                  #if os(macOS)
-                  .onPasteCommand(of: [.image, .fileURL], perform: attach)
-                  #endif
-              }.padding(10).background(Color.mutedSurface, in: RoundedRectangle(cornerRadius: 14))
+              TextField("Что ты делал и что получилось вместо ожидаемого?", text: $description, axis: .vertical)
+                .textFieldStyle(.plain).font(.body).lineLimit(6...12)
+                .frame(minHeight: 124, alignment: .topLeading).accessibilityLabel("Описание ошибки")
+                #if os(macOS)
+                .onPasteCommand(of: [.image, .fileURL], perform: attach)
+                #endif
+                .padding(10).background(Color.mutedSurface, in: RoundedRectangle(cornerRadius: 14))
               if description.unicodeScalars.count > 6000 { Text("Описание должно быть не длиннее 6000 символов.").font(.caption).foregroundStyle(.red) }
             }
             VStack(alignment: .leading, spacing: 10) {
@@ -64,21 +62,19 @@ struct BugReportView: View {
                 Spacer()
                 if importing { ProgressView().controlSize(.small) }
               }
-              if let screenshot {
-                preview(screenshot).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: 170)
-                  .background(Color.mutedSurface, in: RoundedRectangle(cornerRadius: 12)).clipShape(RoundedRectangle(cornerRadius: 12))
-                  .overlay(alignment: .topTrailing) {
-                    Button { self.screenshot = nil } label: {
-                      Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).frame(width: 28, height: 28)
-                        .background(.regularMaterial, in: Circle())
-                    }.buttonStyle(.plain).padding(6).accessibilityLabel("Убрать скриншот")
-                  }
+              screenshotDropZone
+              VStack(alignment: .leading, spacing: 3) {
+                Text(BugReportAttachment.formatsLabel)
+                Text("До 30 МБ")
+              }.font(.caption2).foregroundStyle(attachmentError == nil ? Color.secondary : Color.red)
+              if let attachmentError {
+                Text(attachmentError).font(.caption).foregroundStyle(.red)
+                  .accessibilityLabel("Ошибка скриншота: \(attachmentError)")
               }
               HStack(spacing: 8) {
                 Button { filesOpen = true } label: { Label("Файлы", systemImage: "folder") }
                 Button { photosOpen = true } label: { Label("Фото", systemImage: "photo") }
-                PasteButton(supportedContentTypes: [.image, .fileURL]) { providers in attach(providers) }
-                  .labelStyle(.titleAndIcon)
+                BugReportPasteButton(attach: attach)
               }.buttonStyle(.bordered).controlSize(.small).disabled(busy)
             }
             EditorFooter(message: message)
@@ -118,7 +114,7 @@ struct BugReportView: View {
     #if os(macOS)
     .onPasteCommand(of: [.image, .fileURL], perform: attach)
     #endif
-    .fileImporter(isPresented: $filesOpen, allowedContentTypes: [.image], allowsMultipleSelection: false) { result in
+    .fileImporter(isPresented: $filesOpen, allowedContentTypes: BugReportAttachment.supportedTypes, allowsMultipleSelection: false) { result in
       switch result {
       case .success(let urls): if let url = urls.first { importFile(url) }
       case .failure(let error):
@@ -128,15 +124,48 @@ struct BugReportView: View {
     .photosPicker(isPresented: $photosOpen, selection: $photo, matching: .images)
     .onChange(of: photo) { _, item in
       guard let item else { return }
-      importing = true; message = nil
+      importing = true; attachmentError = nil
       Task {
         defer { importing = false; photo = nil }
         do {
           guard let bytes = try await item.loadTransferable(type: Data.self) else { throw RequestFailure.invalidAttachment }
           screenshot = try await Task.detached(priority: .userInitiated) { try BugReportAttachment.image(bytes) }.value
-        } catch { message = model.friendly(error) }
+        } catch { attachmentError = model.friendly(error) }
       }
     }
+  }
+  private var screenshotDropZone: some View {
+    VStack(spacing: 8) {
+      if let screenshot {
+        preview(screenshot).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: 140)
+          .clipShape(RoundedRectangle(cornerRadius: 8))
+          .overlay(alignment: .topTrailing) {
+            Button { self.screenshot = nil; attachmentError = nil } label: {
+              Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).frame(width: 28, height: 28)
+                .background(.regularMaterial, in: Circle())
+            }.buttonStyle(.plain).padding(4).accessibilityLabel("Убрать скриншот")
+          }
+      } else {
+        Image(systemName: attachmentError == nil ? "photo.badge.plus" : "exclamationmark.triangle")
+          .font(.system(size: 22, weight: .light)).foregroundStyle(.secondary)
+        Text("Перетащи скриншот сюда").font(.callout).foregroundStyle(.secondary)
+      }
+    }.frame(maxWidth: .infinity, minHeight: 90).padding(12)
+      .background(attachmentError != nil ? Color.red.opacity(0.06)
+        : dropTargeted ? Color.accent.opacity(0.08) : Color.mutedSurface, in: RoundedRectangle(cornerRadius: 14))
+      .overlay {
+        RoundedRectangle(cornerRadius: 14).strokeBorder(
+          attachmentError != nil ? Color.red : dropTargeted ? Color.accent : Color.primary.opacity(0.15),
+          style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+      }
+      .contentShape(RoundedRectangle(cornerRadius: 14))
+      .onDrop(of: [UTType.item.identifier], isTargeted: $dropTargeted) { providers in
+        guard !busy, !providers.isEmpty else { return false }
+        attach(providers)
+        return true
+      }
+      .accessibilityLabel("Область для скриншота")
+      .accessibilityHint("Перетащи изображение размером до 30 мегабайт")
   }
   private func preview(_ data: Data) -> Image {
     #if os(macOS)
@@ -147,20 +176,20 @@ struct BugReportView: View {
   }
   private func attach(_ providers: [NSItemProvider]) {
     guard !busy, let provider = providers.first else { return }
-    importing = true; message = nil
+    importing = true; attachmentError = nil
     Task {
       defer { importing = false }
       do { screenshot = try await BugReportAttachment.provider(provider) }
-      catch { message = model.friendly(error) }
+      catch { attachmentError = model.friendly(error) }
     }
   }
   private func importFile(_ url: URL) {
     guard !busy else { return }
-    importing = true; message = nil
+    importing = true; attachmentError = nil
     Task {
       defer { importing = false }
       do { screenshot = try await Task.detached(priority: .userInitiated) { try BugReportAttachment.file(url) }.value }
-      catch { message = model.friendly(error) }
+      catch { attachmentError = model.friendly(error) }
     }
   }
   private func submit() async {
@@ -172,4 +201,32 @@ struct BugReportView: View {
       submitted = true
     } catch { message = model.friendly(error) }
   }
+}
+
+private struct BugReportPasteButton: View {
+  var attach: ([NSItemProvider]) -> Void
+  #if os(macOS)
+  @State private var clipboardRevision = NSPasteboard.general.changeCount
+  #endif
+  var body: some View {
+    #if os(macOS)
+    button.id(clipboardRevision)
+      // PasteButton can retain its initial availability while the form stays open.
+      // Observe metadata only; image/file content is read by the system on paste.
+      .onReceive(Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()) { _ in refresh() }
+      .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refresh() }
+    #else
+    button
+    #endif
+  }
+  private var button: some View {
+    PasteButton(supportedContentTypes: [.image, .fileURL], payloadAction: attach)
+      .labelStyle(.titleAndIcon)
+  }
+  #if os(macOS)
+  private func refresh() {
+    let revision = NSPasteboard.general.changeCount
+    if revision != clipboardRevision { clipboardRevision = revision }
+  }
+  #endif
 }

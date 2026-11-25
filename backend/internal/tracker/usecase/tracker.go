@@ -7,6 +7,7 @@ import (
 )
 
 type Dependencies struct {
+	TaskOrders   taskOrderRepository
 	Boards       boardRepository
 	Lists        listRepository
 	Tags         tagRepository

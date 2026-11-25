@@ -22,6 +22,7 @@ import (
 	listrepo "github.com/alnoi/locked-in/backend/internal/tracker/repository/postgres/list"
 	tagrepo "github.com/alnoi/locked-in/backend/internal/tracker/repository/postgres/tag"
 	taskrepo "github.com/alnoi/locked-in/backend/internal/tracker/repository/postgres/task"
+	taskorderrepo "github.com/alnoi/locked-in/backend/internal/tracker/repository/postgres/task_order"
 	"github.com/alnoi/locked-in/backend/internal/tracker/transport/http/local"
 	"github.com/alnoi/locked-in/backend/internal/tracker/usecase"
 	"github.com/alnoi/locked-in/backend/pkg/transaction_manager"
@@ -64,9 +65,10 @@ func New(ctx context.Context, settings config.Config) (*App, error) {
 	lists := listrepo.New(getter)
 	tags := tagrepo.New(getter)
 	tasks := taskrepo.New(getter)
+	taskOrders := taskorderrepo.New(getter)
 	comments := commentrepo.New(getter)
 	links := linksrepo.New(getter)
-	core := usecase.New(usecase.Dependencies{Boards: boards, Lists: lists, Tags: tags, Tasks: tasks, Comments: comments, Links: links, Transactions: transactions})
+	core := usecase.New(usecase.Dependencies{TaskOrders: taskOrders, Boards: boards, Lists: lists, Tags: tags, Tasks: tasks, Comments: comments, Links: links, Transactions: transactions})
 	authorized := usecase.NewAuthorized(core)
 	sessions := sessionrepo.New(getter)
 	identity := identityusecase.New(users, sessions, core, transactions)

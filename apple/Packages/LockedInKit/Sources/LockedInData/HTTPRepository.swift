@@ -1,7 +1,7 @@
 import Foundation
 import LockedInDomain
 
-public struct HTTPRepository: TaskSyncRemote {
+public struct HTTPRepository: TaskSyncRemote, TaskOrderRepository {
   public let baseURL: URL
   private let accessToken: String?
   private let session: URLSession
@@ -15,6 +15,7 @@ public struct HTTPRepository: TaskSyncRemote {
     let total: Int
   }
   public func load() async throws -> Snapshot {
+    async let order: TaskOrder = request("task-order")
     async let user: UserRecord = request("me")
     async let tasks: Collection<TaskRecord> = request("tasks")
     async let boards: Collection<BoardRecord> = request("boards")
@@ -23,7 +24,10 @@ public struct HTTPRepository: TaskSyncRemote {
     async let comments: Collection<CommentRecord> = request("comments")
     return try await Snapshot(
       user: user, tasks: tasks.items, boards: boards.items, lists: lists.items, tags: tags.items,
-      comments: comments.items)
+      comments: comments.items, taskOrder: order)
+  }
+  public func saveTaskOrder(_ ids: [UUID], initializeOnly: Bool) async throws -> TaskOrder {
+    try await request("task-order", method: "PUT", body: ["taskIDs": ids.map(\.uuidString), "initializeOnly": initializeOnly])
   }
   public func createTask(id: UUID, input: TaskInput) async throws -> TaskRecord {
     var body = try object(input)

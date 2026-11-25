@@ -10,6 +10,7 @@ enum UndoOperation {
   case change(Change)
   case taskOrder([UUID])
   case listOrder([UUID])
+  case boardOrder([UUID])
 }
 
 @MainActor final class ActionHistory {

@@ -16,19 +16,18 @@ struct QuickTaskCard: View {
   @State private var tagIDs: [UUID] = []
   @State private var saving = false
   @State private var errorMessage: String?
-  @FocusState private var focused: Bool
+  @State private var focused = false
   private var active: Bool { focused || !title.isEmpty || !tagIDs.isEmpty }
   var body: some View {
     HStack(alignment: .top, spacing: 8) {
       Circle().strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [1.5, 2]))
         .foregroundStyle(.secondary.opacity(0.6)).frame(width: 17, height: 17).padding(.top, 2)
       VStack(alignment: .leading, spacing: 4) {
-        TextField(focused ? "Название задачи" : "", text: $title, axis: .vertical)
-          .lineLimit(1...)
-          .fixedSize(horizontal: false, vertical: true)
-          .textFieldStyle(.plain).font(.body.weight(.medium)).focused($focused)
-          .accessibilityLabel("Новая задача в списке")
-          .onSubmit { Task { await save(draft, keepFocus: true) } }
+        QuickTaskTitleInput(title: $title, focused: $focused) {
+          Task { await save(draft, keepFocus: true) }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityLabel("Новая задача в списке")
         if active {
           HStack(spacing: 8) {
             Menu {

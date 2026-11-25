@@ -22,6 +22,7 @@ public enum SyncConnectionError: Error, LocalizedError {
 }
 public struct TaskSyncStatus: Sendable {
   public var pendingTaskIDs: Set<UUID>
+  public var hasPendingTaskOrder = false
   public var isOffline: Bool
   public var issue: String?
 }

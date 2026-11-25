@@ -53,7 +53,7 @@ struct PlannerSidebarLayout<Sidebar: View, Detail: View>: View {
         } else {
           detail.id(phoneScreen).transition(phoneTransition)
         }
-      }.frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
+      }.frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: phoneScreen)
     } else {
       NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $compactColumn) {

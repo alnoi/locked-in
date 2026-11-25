@@ -22,11 +22,13 @@ public struct LockedInRootView: View {
   #endif
   @State private var phoneDirection = CalendarPageDirection()
   @State private var hoverSidebar = false
+  @State private var boardDragSession = SidebarBoardDragSession()
   @State private var columnVisibility = NavigationSplitViewVisibility.all
   @State private var compactColumn = NavigationSplitViewColumn.detail
   @State private var search = ""
   @State private var searchPresented = false
   @State private var taskSheetActive = false
+  @State private var quickEntryRequested = false
   @State private var pendingShortcut: AppShortcut?
   @State private var taskPresentation: TaskPresentation?
   @State private var boardPresentation: BoardPresentation?
@@ -54,7 +56,39 @@ public struct LockedInRootView: View {
       #if os(iOS)
       .background { KeyboardDismissOnOutsideTap().allowsHitTesting(false) }
       #endif
-      .onChange(of: model.settings.identity) { _, _ in resetAccountNavigation() }
+    .onOpenURL { url in
+      guard url.scheme == "lockedin" else { return }
+      Task {
+        await model.start()
+        #if os(iOS)
+        if usesPhoneNavigation { compactColumn = .detail }
+        #endif
+        if url.host == "new-task" {
+          quickEntryRequested = true
+          consumeQuickEntry()
+        } else if url.host == "task", let id = UUID(uuidString: url.lastPathComponent),
+          let task = model.snapshot.tasks.first(where: { $0.id == id }) {
+          let date = task.plannedAt ?? task.deadlineAt
+            ?? task.deadlineDate.flatMap(DateOnly.parse) ?? .now
+          search = ""
+          model.calendarFocus = CalendarTaskFocus(taskID: id, date: date)
+          destination = .calendar
+          taskPresentation = TaskPresentation(taskID: id, input: TaskInput(task))
+        } else if url.host == "calendar",
+          let day = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "date" })?.value,
+          let date = DateOnly.parse(day) {
+          model.calendarFocus = CalendarTaskFocus(date: date)
+          destination = .calendar
+        } else if url.host == "today" { destination = .today }
+        else if url.host == "board" { destination = .board }
+      }
+    }
+      .onChange(of: model.hasLoaded) { _, _ in consumeQuickEntry() }
+      .onChange(of: navigationGesturesEnabled) { _, enabled in if enabled { consumeQuickEntry() } }
+      .onChange(of: model.settings.identity) { _, _ in
+        boardDragSession.reset(animated: false)
+        resetAccountNavigation()
+      }
       .onChange(of: model.needsAuthentication) { _, value in if value { resetAccountNavigation() } }
   }
   private var phoneCalendarActive: Bool {
@@ -63,6 +97,13 @@ public struct LockedInRootView: View {
     #else
     false
     #endif
+  }
+  private var phoneBoardActive: Bool {
+    guard usesPhoneNavigation else { return false }
+    switch destination ?? .board {
+    case .board, .boardDetail: return true
+    default: return false
+    }
   }
   private var usesPhoneNavigation: Bool {
     #if os(iOS)
@@ -183,52 +224,25 @@ public struct LockedInRootView: View {
         #endif
         .toolbar {
           #if os(iOS)
-          ToolbarItem(placement: .topBarTrailing) { BugReportButton(model: model) }
-
           ToolbarItem(placement: .topBarLeading) {
             if usesPhoneNavigation && canNavigateBack {
               Button(action: navigateBack) { Image(systemName: "chevron.left") }
                 .accessibilityLabel("Вернуться на предыдущий экран")
             }
           }
-          #endif
-          ToolbarItemGroup(placement: .primaryAction) {
-            if !phoneCalendarActive {
-            if model.isLoading { ProgressView().controlSize(.small) }
-            Button {
-              Task { await model.refresh() }
-            } label: {
-              Label("Обновить", systemImage: "arrow.clockwise")
+          if phoneBoardActive {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+              BugReportButton(model: model)
+              actionsToolbarMenu
+              refreshToolbarActions
             }
-            .disabled(model.isLoading).keyboardShortcut(
-              "r", modifiers: .command)
-            }
+          } else {
+            ToolbarItem(placement: .topBarTrailing) { BugReportButton(model: model) }
           }
-          ToolbarItem(placement: .automatic) {
-            if !phoneCalendarActive {
-            Menu {
-              Toggle("Показывать завершённые", isOn: $showCompleted)
-              Button("Новая доска", systemImage: "rectangle.stack.badge.plus") {
-                boardPresentation = BoardPresentation()
-              }
-              Button("Новый список", systemImage: "folder.badge.plus") { newList() }
-              if let id = currentBoardID,
-                let board = model.snapshot.boards.first(where: { $0.id == id })
-              {
-                Button("Настроить доску", systemImage: "slider.horizontal.3") {
-                  boardPresentation = BoardPresentation(boardID: id, input: BoardInput(board))
-                }
-                Button(
-                  "Дочерняя доска с фильтром", systemImage: "line.3.horizontal.decrease.circle"
-                ) {
-                  boardPresentation = BoardPresentation(input: BoardInput(parentID: id))
-                }
-              }
-              Button("Настройки", systemImage: "gearshape") { showSettings = true }
-            } label: {
-              Label("Действия", systemImage: "ellipsis.circle")
-            }
-            }
+          #endif
+          if !phoneBoardActive {
+            ToolbarItemGroup(placement: .primaryAction) { refreshToolbarActions }
+            ToolbarItem(placement: .automatic) { actionsToolbarMenu }
           }
         }
       }
@@ -297,15 +311,14 @@ public struct LockedInRootView: View {
         pendingShortcut = nil
         _ = handleShortcut(shortcut)
       }
-    }) {
-      TaskEditor(model: model, presentation: $0, saveOnOutside: destination == .calendar)
-        .bugReportAccess(model: model, reserveSpace: true)
+    }) { presentation in
+      TaskEditor(model: model, presentation: presentation, saveOnOutside: destination == .calendar)
         .onAppear { taskSheetActive = true }
     }
-    .sheet(item: $boardPresentation) { BoardEditor(model: model, presentation: $0).bugReportAccess(model: model, reserveSpace: true) }
-    .sheet(item: $listPresentation) { ListEditor(model: model, presentation: $0).bugReportAccess(model: model, reserveSpace: true) }
-    .sheet(isPresented: $showSettings) { SettingsView(model: model).bugReportAccess(model: model, reserveSpace: true) }
-    .sheet(isPresented: $showProfile) { ProfileView(model: model).bugReportAccess(model: model, reserveSpace: true) }
+    .sheet(item: $boardPresentation) { BoardEditor(model: model, presentation: $0) }
+    .sheet(item: $listPresentation) { ListEditor(model: model, presentation: $0) }
+    .sheet(isPresented: $showSettings) { SettingsView(model: model) }
+    .sheet(isPresented: $showProfile) { ProfileView(model: model) }
     .alert(
       "Не удалось выполнить действие",
       isPresented: Binding(
@@ -326,33 +339,11 @@ public struct LockedInRootView: View {
       if value == .active && model.hasLoaded { Task { await model.refresh(); await model.refreshReminders() } }
       if value == .background { model.publishWidgets(forceReload: true) }
     }
-    .onOpenURL { url in
-      guard url.scheme == "lockedin" else { return }
-      Task {
-        await model.start()
-        #if os(iOS)
-        if usesPhoneNavigation { compactColumn = .detail }
-        #endif
-        if url.host == "task", let id = UUID(uuidString: url.lastPathComponent),
-          let task = model.snapshot.tasks.first(where: { $0.id == id }) {
-          let date = task.plannedAt ?? task.deadlineAt
-            ?? task.deadlineDate.flatMap(DateOnly.parse) ?? .now
-          search = ""
-          model.calendarFocus = CalendarTaskFocus(taskID: id, date: date)
-          destination = .calendar
-          taskPresentation = TaskPresentation(taskID: id, input: TaskInput(task))
-        } else if url.host == "calendar",
-          let day = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "date" })?.value,
-          let date = DateOnly.parse(day) {
-          model.calendarFocus = CalendarTaskFocus(date: date)
-          destination = .calendar
-        } else if url.host == "today" { destination = .today }
-      }
-    }
+
     .task {
       await model.start()
       while !Task.isCancelled {
-        do { try await Task.sleep(for: .seconds(model.isOffline || !model.unsyncedTaskIDs.isEmpty ? 5 : 30)) } catch { break }
+        do { try await Task.sleep(for: .seconds(model.isOffline || !model.unsyncedTaskIDs.isEmpty || model.hasPendingTaskOrder ? 5 : 30)) } catch { break }
         await model.refresh()
       }
     }
@@ -387,7 +378,7 @@ public struct LockedInRootView: View {
         sidebarBrand
       }.padding(18)
       #endif
-      List(selection: $destination) {
+      List(selection: usesPhoneNavigation ? nil : $destination) {
         Section("Пространство") {
           ForEach([Destination.today, .inbox, .calendar, .board], id: \.self) { route in
             sidebarLink(route) {
@@ -430,6 +421,8 @@ public struct LockedInRootView: View {
               }
             }
             .padding(.leading, CGFloat(entry.depth) * 14)
+            .modifier(SidebarBoardReorder(id: entry.id, tree: boardTree, order: model.boardOrderIDs,
+              session: boardDragSession, save: model.saveBoardOrder))
             .tag(Destination.boardDetail(entry.id))
             .contextMenu {
               Button("Добавить дочернюю доску", systemImage: "folder.badge.plus") { newChildBoard(entry.id) }
@@ -438,6 +431,8 @@ public struct LockedInRootView: View {
               }
             }
           }
+          .animation(.snappy(duration: 0.12, extraBounce: 0),
+            value: boardTree.entries(collapsed: collapsedBoardIDs).map(\.id))
           Button {
             boardPresentation = BoardPresentation()
           } label: {
@@ -516,6 +511,44 @@ public struct LockedInRootView: View {
     .navigationTitle("TrackIt")
     #endif
   }
+  @ViewBuilder private var refreshToolbarActions: some View {
+    if !phoneCalendarActive {
+      if model.isLoading { ProgressView().controlSize(.small) }
+      Button {
+        Task { await model.refresh() }
+      } label: {
+        Label("Обновить", systemImage: "arrow.clockwise")
+      }
+      .disabled(model.isLoading).keyboardShortcut(
+        "r", modifiers: .command)
+    }
+  }
+  @ViewBuilder private var actionsToolbarMenu: some View {
+    if !phoneCalendarActive {
+      Menu {
+        Toggle("Показывать завершённые", isOn: $showCompleted)
+        Button("Новая доска", systemImage: "rectangle.stack.badge.plus") {
+          boardPresentation = BoardPresentation()
+        }
+        Button("Новый список", systemImage: "folder.badge.plus") { newList() }
+        if let id = currentBoardID,
+          let board = model.snapshot.boards.first(where: { $0.id == id })
+        {
+          Button("Настроить доску", systemImage: "slider.horizontal.3") {
+            boardPresentation = BoardPresentation(boardID: id, input: BoardInput(board))
+          }
+          Button(
+            "Дочерняя доска с фильтром", systemImage: "line.3.horizontal.decrease.circle"
+          ) {
+            boardPresentation = BoardPresentation(input: BoardInput(parentID: id))
+          }
+        }
+        Button("Настройки", systemImage: "gearshape") { showSettings = true }
+      } label: {
+        Label("Действия", systemImage: "ellipsis.circle")
+      }
+    }
+  }
   private var sidebarBrand: some View {
     HStack(spacing: 10) {
       VStack(alignment: .trailing, spacing: 2) {
@@ -543,7 +576,7 @@ public struct LockedInRootView: View {
     }
     #if os(iOS)
     .fixedSize(horizontal: true, vertical: false)
-    .padding(.horizontal, 8).frame(height: 40)
+    .padding(.leading, 16).padding(.trailing, 12).frame(height: 40)
     #endif
   }
   @ViewBuilder private var content: some View {
@@ -699,6 +732,16 @@ public struct LockedInRootView: View {
   private func openTask(_ task: TaskRecord) {
     taskPresentation = TaskPresentation(taskID: task.id, input: TaskInput(task))
   }
+  private func consumeQuickEntry() {
+    guard quickEntryRequested, model.canEdit, !model.needsAuthentication, navigationGesturesEnabled else { return }
+    quickEntryRequested = false
+    search = ""
+    destination = .board
+    #if os(iOS)
+    compactColumn = .detail
+    #endif
+    taskPresentation = TaskPresentation(input: TaskInput())
+  }
   private func addTask() {
     var input = TaskInput()
     if destination == .today { input.plannedAt = .now }
@@ -724,7 +767,10 @@ public struct LockedInRootView: View {
       ?? model.snapshot.generalBoard?.id
     listPresentation = ListPresentation(input: ListInput(boardID: boardID))
   }
-  private var boardTree: BoardSidebarTree { BoardSidebarTree(boards: model.snapshot.boards) }
+  private var boardTree: BoardSidebarTree {
+    BoardSidebarTree(boards: model.snapshot.boards,
+      order: boardDragSession.source == nil ? model.boardOrderIDs : boardDragSession.order)
+  }
   private var collapsedBoardIDs: Set<UUID> {
     Set(collapsedBoardsStorage.split(separator: ",").compactMap { UUID(uuidString: String($0)) })
   }

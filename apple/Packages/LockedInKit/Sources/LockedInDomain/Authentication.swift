@@ -10,10 +10,12 @@ public struct AuthSession: Codable, Sendable {
 }
 
 public enum AuthenticationError: LocalizedError, Equatable {
-  case invalidCredentials, usernameTaken, sessionExpired, invalidRegistration, rateLimited
+  case invalidCredentials, userNotFound, wrongPassword, usernameTaken, sessionExpired, invalidRegistration, rateLimited
   public var errorDescription: String? {
     switch self {
     case .invalidCredentials: return "Неверный логин или пароль."
+    case .userNotFound: return "Пользователь с таким логином не найден."
+    case .wrongPassword: return "Неверный пароль."
     case .usernameTaken: return "Этот логин уже занят."
     case .sessionExpired: return "Войди в аккаунт ещё раз. Твои данные сохранены."
     case .invalidRegistration: return "Проверь логин, пароль и эмоджи."

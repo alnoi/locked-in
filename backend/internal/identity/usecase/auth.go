@@ -34,17 +34,17 @@ func (u *UseCase) Register(ctx context.Context, in *models.CredentialsIn) (model
 }
 func (u *UseCase) Login(ctx context.Context, in *models.CredentialsIn) (models.Authentication, error) {
 	in.Username = models.NormalizeUsername(in.Username)
-	if err := models.ValidateCredentials(*in); err != nil {
-		return models.Authentication{}, apperr.ErrInvalidCredentials()
-	}
 	values, err := u.users.GetCredentials(ctx, models.GetUsersFilters{Username: in.Username})
 	if err != nil {
 		return models.Authentication{}, err
 	}
-	credentials := models.UserCredentials{}
-	if len(values) > 0 {
-		credentials = values[0]
+	if len(values) == 0 {
+		return models.Authentication{}, apperr.ErrUserNotFound()
 	}
+	if err := models.ValidateCredentials(*in); err != nil {
+		return models.Authentication{}, apperr.ErrWrongPassword()
+	}
+	credentials := values[0]
 	if err := domain.VerifyPassword(credentials.PasswordHash, in.Password); err != nil {
 		return models.Authentication{}, err
 	}

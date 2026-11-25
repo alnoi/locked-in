@@ -43,7 +43,7 @@ public enum WidgetService {
     var right = rhs; right.pendingTaskIDs = []
     return (try? JSONCodec.encoder().encode(left)) == (try? JSONCodec.encoder().encode(right))
   }
-  private static func remote(_ value: WidgetSnapshot) throws -> HTTPRepository {
+  static func remote(_ value: WidgetSnapshot) throws -> HTTPRepository {
     let url = try ConnectionSettings(mode: .server, serverAddress: value.serverAddress).validatedURL()
     let configuration = URLSessionConfiguration.ephemeral
     configuration.timeoutIntervalForRequest = 5

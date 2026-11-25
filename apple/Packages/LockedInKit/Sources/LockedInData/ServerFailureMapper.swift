@@ -7,7 +7,7 @@ enum ServerFailureMapper {
   private static let statuses: [String: Int] = [
     "invalid_attachment": 400, "validation_error": 400, "invalid_username": 400, "invalid_password": 400,
     "invalid_avatar": 400, "invalid_time_zone": 400, "invalid_credentials": 401,
-    "unauthorized": 401, "forbidden": 403, "not_found": 404, "method_not_allowed": 405,
+    "user_not_found": 401, "wrong_password": 401, "unauthorized": 401, "forbidden": 403, "not_found": 404, "method_not_allowed": 405,
     "conflict": 409, "username_taken": 409, "rate_limited": 429,
     "internal_error": 500, "server_unavailable": 503,
   ]
@@ -24,7 +24,13 @@ enum ServerFailureMapper {
     }
     switch status {
     case 400: return operation == .registration ? AuthenticationError.invalidRegistration : RequestFailure.invalidRequest
-    case 401: return operation == .login ? AuthenticationError.invalidCredentials : AuthenticationError.sessionExpired
+    case 401:
+      guard operation == .login else { return AuthenticationError.sessionExpired }
+      switch code {
+      case "user_not_found": return AuthenticationError.userNotFound
+      case "wrong_password": return AuthenticationError.wrongPassword
+      default: return AuthenticationError.invalidCredentials
+      }
     case 403: return RequestFailure.forbidden
     case 404: return TrackerError.notFound
     case 405: return RequestFailure.unsupportedAction

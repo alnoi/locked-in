@@ -10,7 +10,7 @@
         "operationId": "GetMe",
         "responses": {
           "200": {
-            "description": "\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c.",
+            "description": "Локальный пользователь.",
             "content": {
               "application/json": {
                 "schema": {
@@ -20,7 +20,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -45,7 +45,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -128,7 +128,7 @@
         ],
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -138,7 +138,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -163,7 +163,7 @@
         },
         "responses": {
           "201": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -173,7 +173,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -201,7 +201,7 @@
         "operationId": "GetList",
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -211,7 +211,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -236,7 +236,7 @@
         },
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -246,7 +246,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -261,10 +261,10 @@
         "operationId": "DeleteList",
         "responses": {
           "204": {
-            "description": "\u0423\u0434\u0430\u043b\u0435\u043d\u043e."
+            "description": "Удалено."
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -329,7 +329,7 @@
         ],
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -339,7 +339,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -364,7 +364,7 @@
         },
         "responses": {
           "201": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -374,7 +374,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -402,7 +402,7 @@
         "operationId": "GetTag",
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -412,7 +412,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -437,7 +437,7 @@
         },
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -447,7 +447,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -462,10 +462,10 @@
         "operationId": "DeleteTag",
         "responses": {
           "204": {
-            "description": "\u0423\u0434\u0430\u043b\u0435\u043d\u043e."
+            "description": "Удалено."
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -594,7 +594,7 @@
         ],
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -604,7 +604,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -629,7 +629,7 @@
         },
         "responses": {
           "201": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -639,7 +639,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -667,7 +667,7 @@
         "operationId": "GetTask",
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -677,7 +677,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -702,7 +702,7 @@
         },
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -712,7 +712,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -727,10 +727,10 @@
         "operationId": "DeleteTask",
         "responses": {
           "204": {
-            "description": "\u0423\u0434\u0430\u043b\u0435\u043d\u043e."
+            "description": "Удалено."
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -804,7 +804,7 @@
         ],
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -814,7 +814,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -839,7 +839,7 @@
         },
         "responses": {
           "201": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -849,7 +849,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -877,7 +877,7 @@
         "operationId": "GetComment",
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -887,7 +887,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -912,7 +912,7 @@
         },
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -922,7 +922,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -937,10 +937,10 @@
         "operationId": "DeleteComment",
         "responses": {
           "204": {
-            "description": "\u0423\u0434\u0430\u043b\u0435\u043d\u043e."
+            "description": "Удалено."
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -968,7 +968,7 @@
         "operationId": "CompleteTask",
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -978,7 +978,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1006,7 +1006,7 @@
         "operationId": "ReopenTask",
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1016,7 +1016,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1081,7 +1081,7 @@
         ],
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1091,7 +1091,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1116,7 +1116,7 @@
         },
         "responses": {
           "201": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1126,7 +1126,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1154,7 +1154,7 @@
         "operationId": "GetBoard",
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1164,7 +1164,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1189,7 +1189,7 @@
         },
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1199,7 +1199,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1214,10 +1214,10 @@
         "operationId": "DeleteBoard",
         "responses": {
           "204": {
-            "description": "\u0423\u0434\u0430\u043b\u0435\u043d\u043e."
+            "description": "Удалено."
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1245,7 +1245,7 @@
         ],
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1255,7 +1255,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1283,7 +1283,7 @@
         ],
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1293,7 +1293,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1321,7 +1321,7 @@
         ],
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1331,7 +1331,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1359,7 +1359,7 @@
         ],
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1369,7 +1369,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1397,7 +1397,7 @@
         ],
         "responses": {
           "200": {
-            "description": "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438.",
+            "description": "Результат операции.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1407,7 +1407,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1434,7 +1434,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1472,7 +1472,7 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1503,7 +1503,7 @@
             "description": "Signed out"
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1531,7 +1531,7 @@
         },
         "responses": {
           "201": {
-            "description": "\u041e\u0442\u0447\u0451\u0442 \u0441\u043e\u0445\u0440\u0430\u043d\u0451\u043d.",
+            "description": "Отчёт сохранён.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1541,7 +1541,69 @@
             }
           },
           "default": {
-            "description": "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430.",
+            "description": "Ошибка запроса.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/task-order": {
+      "get": {
+        "operationId": "GetTaskOrder",
+        "responses": {
+          "200": {
+            "description": "Порядок задач.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskOrderOut"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка запроса.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "SetTaskOrder",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetTaskOrderIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Порядок задач.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskOrderOut"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка запроса.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1565,11 +1627,11 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "\u041f\u0443\u0431\u043b\u0438\u0447\u043d\u044b\u0439 \u043a\u043e\u0434 \u043e\u0448\u0438\u0431\u043a\u0438."
+            "description": "Публичный код ошибки."
           },
           "message": {
             "type": "string",
-            "description": "\u0411\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u043e\u0435 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u043e\u0431 \u043e\u0448\u0438\u0431\u043a\u0435."
+            "description": "Безопасное сообщение об ошибке."
           }
         }
       },
@@ -1686,7 +1748,7 @@
           },
           "color": {
             "type": "string",
-            "description": "\u0426\u0432\u0435\u0442 \u0432 \u0444\u043e\u0440\u043c\u0430\u0442\u0435 #RRGGBB."
+            "description": "Цвет в формате #RRGGBB."
           },
           "id": {
             "type": "string",
@@ -1716,7 +1778,7 @@
           },
           "color": {
             "type": "string",
-            "description": "\u0426\u0432\u0435\u0442 \u0432 \u0444\u043e\u0440\u043c\u0430\u0442\u0435 #RRGGBB."
+            "description": "Цвет в формате #RRGGBB."
           }
         },
         "required": [
@@ -1731,7 +1793,7 @@
           },
           "color": {
             "type": "string",
-            "description": "\u0426\u0432\u0435\u0442 \u0432 \u0444\u043e\u0440\u043c\u0430\u0442\u0435 #RRGGBB."
+            "description": "Цвет в формате #RRGGBB."
           },
           "clearColor": {
             "type": "boolean"
@@ -1775,7 +1837,7 @@
           },
           "deadlineDate": {
             "type": "string",
-            "description": "\u0414\u0430\u0442\u0430 YYYY-MM-DD \u0431\u0435\u0437 \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
+            "description": "Дата YYYY-MM-DD без времени."
           },
           "deadlineAt": {
             "type": "string",
@@ -1853,7 +1915,7 @@
           },
           "deadlineDate": {
             "type": "string",
-            "description": "\u0414\u0430\u0442\u0430 YYYY-MM-DD \u0431\u0435\u0437 \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
+            "description": "Дата YYYY-MM-DD без времени."
           },
           "deadlineAt": {
             "type": "string",
@@ -1884,7 +1946,7 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "\u0421\u0442\u0430\u0431\u0438\u043b\u044c\u043d\u044b\u0439 ID \u0437\u0430\u0434\u0430\u0447\u0438 \u0434\u043b\u044f \u043e\u0444\u043b\u0430\u0439\u043d-\u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u0438.",
+            "description": "Стабильный ID задачи для офлайн-синхронизации.",
             "x-go-name": "ID"
           },
           "isProject": {
@@ -1914,7 +1976,7 @@
           },
           "deadlineDate": {
             "type": "string",
-            "description": "\u0414\u0430\u0442\u0430 YYYY-MM-DD \u0431\u0435\u0437 \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
+            "description": "Дата YYYY-MM-DD без времени."
           },
           "deadlineAt": {
             "type": "string",
@@ -2267,7 +2329,7 @@
           },
           "screenshotBase64": {
             "type": "string",
-            "description": "\u0420\u0430\u0441\u0442\u0440\u043e\u0432\u044b\u0439 \u0441\u043a\u0440\u0438\u043d\u0448\u043e\u0442 \u0432 Base64."
+            "description": "Растровый скриншот в Base64."
           },
           "screenshotMime": {
             "type": "string"
@@ -2294,6 +2356,47 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "SetTaskOrderIn": {
+        "type": "object",
+        "required": [
+          "taskIDs"
+        ],
+        "properties": {
+          "taskIDs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Идентификаторы задач в порядке отображения."
+          },
+          "initializeOnly": {
+            "type": "boolean",
+            "description": "Начальная загрузка порядка с устройства."
+          }
+        }
+      },
+      "TaskOrderOut": {
+        "type": "object",
+        "required": [
+          "taskIDs",
+          "revision"
+        ],
+        "properties": {
+          "taskIDs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Идентификаторы задач в порядке отображения."
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       }

@@ -68,6 +68,6 @@ public struct ConnectionSettings: Sendable {
         }
         return OfflineTaskRepository(remote: HTTPRepository(baseURL: try validatedURL(), accessToken: session.accessToken),
           file: file,
-          seedFile: Self.supportDirectory.appendingPathComponent("cache_" + key + ".json"))
+          seedFile: Self.supportDirectory.appendingPathComponent("cache_" + key + ".json"), orderSpace: identity)
     }
 }

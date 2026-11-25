@@ -1,7 +1,7 @@
 import Foundation
 import LockedInDomain
 
-public actor OfflineTaskRepository: TrackerRepository {
+public actor OfflineTaskRepository: TrackerRepository, TaskOrderRepository {
   private struct Pending: Codable {
     var version = UUID()
     var task: TaskRecord
@@ -12,20 +12,27 @@ public actor OfflineTaskRepository: TrackerRepository {
     var inheritedTagsDisabled: Bool?
     var restoredComments: [CommentRecord]?
   }
+  private struct PendingTaskOrder: Codable {
+    var version = UUID()
+    var taskIDs: [UUID]
+    var initializeOnly: Bool
+  }
   private struct Archive: Codable {
     var snapshot: Snapshot
     var pending: [Pending] = []
+    var pendingTaskOrder: PendingTaskOrder?
   }
   private let remote: any TaskSyncRemote
   private let file: URL
   private let seedFile: URL?
+  private let orderSpace: String?
   private var archive: Archive?
   private var serverTasks: [UUID: TaskRecord] = [:]
   private var syncing = false
   private var offline = true
   private var issue: String?
-  public init(remote: any TaskSyncRemote, file: URL, seedFile: URL? = nil) {
-    self.remote = remote; self.file = file; self.seedFile = seedFile
+  public init(remote: any TaskSyncRemote, file: URL, seedFile: URL? = nil, orderSpace: String? = nil) {
+    self.remote = remote; self.file = file; self.seedFile = seedFile; self.orderSpace = orderSpace
   }
   public func restore() throws -> Snapshot? {
     if archive == nil {
@@ -38,7 +45,7 @@ public actor OfflineTaskRepository: TrackerRepository {
     return archive?.snapshot
   }
   public func status() -> TaskSyncStatus {
-    TaskSyncStatus(pendingTaskIDs: Set(archive?.pending.map { $0.task.id } ?? []), isOffline: offline, issue: issue)
+    TaskSyncStatus(pendingTaskIDs: Set(archive?.pending.map { $0.task.id } ?? []), hasPendingTaskOrder: archive?.pendingTaskOrder != nil, isOffline: offline, issue: issue)
   }
   public func load() async throws -> Snapshot {
     _ = try restore()
@@ -48,11 +55,12 @@ public actor OfflineTaskRepository: TrackerRepository {
     do {
       let remoteSnapshot = try await remote.load()
       var next = archive ?? Archive(snapshot: remoteSnapshot)
-      guard next.pending.isEmpty || next.snapshot.user.id == remoteSnapshot.user.id else {
+      guard (next.pending.isEmpty && next.pendingTaskOrder == nil) || next.snapshot.user.id == remoteSnapshot.user.id else {
         throw TrackerError.conflict("На сервере другой пользователь. Несинхронизированные задачи сохранены на устройстве.")
       }
       serverTasks = Dictionary(uniqueKeysWithValues: remoteSnapshot.tasks.map { ($0.id, $0) })
       next.snapshot = remoteSnapshot
+      seedTaskOrder(&next)
       overlayPending(&next)
       try save(next)
       offline = false
@@ -69,6 +77,14 @@ public actor OfflineTaskRepository: TrackerRepository {
             break
           }
           issue = UserFacingErrors.message(error)
+        }
+      }
+      if archive?.pending.isEmpty == true, let order = archive?.pendingTaskOrder {
+        do { try await sendTaskOrder(order) }
+        catch {
+          if (error as? AuthenticationError) == .sessionExpired { throw error }
+          offline = UserFacingErrors.isConnectionFailure(error)
+          issue = offline ? nil : UserFacingErrors.message(error)
         }
       }
       return archive!.snapshot
@@ -218,12 +234,57 @@ public actor OfflineTaskRepository: TrackerRepository {
     overlayPending(&next)
     try save(next)
   }
+  public func saveTaskOrder(_ ids: [UUID], initializeOnly: Bool) async throws -> TaskOrder {
+    guard let snapshot = try restore() else {
+      throw TrackerError.validation("Сначала подключись к серверу, чтобы загрузить задачи.")
+    }
+    let available = Set(snapshot.tasks.map(\.id))
+    guard Set(ids).count == ids.count, Set(ids).isSubset(of: available) else {
+      throw TrackerError.validation("Не удалось сохранить порядок. Обнови список задач.")
+    }
+    var next = archive!
+    if initializeOnly, let order = snapshot.taskOrder, order.revision > 0 { return order }
+    let current = TaskOrdering.orderedIDs(snapshot.tasks, stored: snapshot.taskOrder?.taskIDs ?? [])
+    let result = TaskOrder(taskIDs: TaskOrdering.merging(ids, into: current), revision: snapshot.taskOrder?.revision ?? 0)
+    let selected = Set(next.pendingTaskOrder?.taskIDs ?? []).union(ids)
+    let pendingIDs = result.taskIDs.filter { selected.contains($0) }
+    let initial = initializeOnly && (next.pendingTaskOrder?.initializeOnly ?? true)
+    next.pendingTaskOrder = PendingTaskOrder(taskIDs: pendingIDs, initializeOnly: initial)
+    next.snapshot.taskOrder = result
+    try save(next)
+    return result
+  }
+  private func seedTaskOrder(_ value: inout Archive) {
+    guard value.pendingTaskOrder == nil, value.snapshot.taskOrder?.revision == 0,
+      let orderSpace, TaskOrderPreferences.hasSavedOrder(space: orderSpace, userID: value.snapshot.user.id) else { return }
+    let ids = TaskOrderPreferences.orderedIDs(value.snapshot.tasks, space: orderSpace, userID: value.snapshot.user.id)
+    value.pendingTaskOrder = PendingTaskOrder(taskIDs: ids, initializeOnly: true)
+  }
+  private func sendTaskOrder(_ pending: PendingTaskOrder) async throws {
+    guard let remote = remote as? any TaskOrderRepository, let snapshot = archive?.snapshot else {
+      throw RequestFailure.unsupportedAction
+    }
+    let available = Set(snapshot.tasks.map(\.id))
+    let ids = pending.taskIDs.filter { available.contains($0) }
+    let result = try await remote.saveTaskOrder(ids, initializeOnly: pending.initializeOnly)
+    var next = archive!
+    if next.pendingTaskOrder?.version == pending.version { next.pendingTaskOrder = nil }
+    next.snapshot.taskOrder = result
+    overlayPending(&next)
+    try save(next)
+  }
   private func overlayPending(_ value: inout Archive) {
     for pending in value.pending {
       value.snapshot.receive(pending.deleted ? .deleted(.task, pending.task.id) : .task(pending.task))
       if !pending.deleted {
         for comment in pending.restoredComments ?? [] { value.snapshot.receive(.comment(comment)) }
       }
+    }
+    if let order = value.snapshot.taskOrder {
+      let current = TaskOrdering.orderedIDs(value.snapshot.tasks, stored: order.taskIDs)
+      let available = Set(current)
+      let selected = value.pendingTaskOrder?.taskIDs.filter { available.contains($0) } ?? []
+      value.snapshot.taskOrder = TaskOrder(taskIDs: TaskOrdering.merging(selected, into: current), revision: order.revision)
     }
   }
   private func save(_ value: Archive) throws {

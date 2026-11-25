@@ -13,8 +13,11 @@ public final class AppModel {
   var authSession: AuthSession?
   public var profileUser: UserRecord? { authSession?.user ?? (hasLoaded ? snapshot.user : nil) }
   var calendarFocus: CalendarTaskFocus?
+  public private(set) var boardOrderIDs: [UUID] = []
   public private(set) var listOrderIDs: [UUID] = []
   public private(set) var taskOrderIDs: [UUID] = []
+  public private(set) var hasPendingTaskOrder = false
+  @ObservationIgnored private var taskOrderSaveTask: Task<Void, Never>?
   public let alertScheduler = TaskAlertScheduler()
   let dayProgress = DayProgressState()
   private let workdaySummary = WorkdaySummaryScheduler()
@@ -139,6 +142,7 @@ public final class AppModel {
       errorMessage = nil
       lastRefresh = .now
       isLoading = false
+      await importWidgetCreations()
       await importWidgetCompletions()
       cacheSnapshot()
       await refreshReminders()
@@ -148,10 +152,12 @@ public final class AppModel {
       isOffline = settings.mode == .server && UserFacingErrors.isConnectionFailure(error)
       if !hasLoaded { errorMessage = friendly(error) }
       else { syncWarning = friendly(error) }
+      if hasLoaded { await importWidgetCreations() }
     }
   }
   private func receiveSyncStatus(_ status: TaskSyncStatus) {
     setPendingTaskIDs(status.pendingTaskIDs)
+    hasPendingTaskOrder = status.hasPendingTaskOrder
     isOffline = status.isOffline
     syncWarning = status.issue
   }
@@ -207,6 +213,7 @@ public final class AppModel {
       snapshot = Snapshot()
       hasLoaded = false
       setPendingTaskIDs([])
+      hasPendingTaskOrder = false
       applyLocalListOrder()
     }
     repository = nil
@@ -238,6 +245,7 @@ public final class AppModel {
     }
     if hasLoaded {
       isLoading = false
+      await importWidgetCreations()
       await importWidgetCompletions()
       cacheSnapshot()
       await refreshReminders()
@@ -414,15 +422,48 @@ public final class AppModel {
     }
   }
   public func saveTaskOrder(_ visible: [UUID]) {
-    let current = TaskOrderPreferences.orderedIDs(
-      snapshot.tasks, space: settings.identity, userID: snapshot.user.id)
-    let next = TaskOrderPreferences.merging(visible, into: current)
-    if next != current {
-      prepareActionHistory()
-      actionHistory.record([.taskOrder(current)])
-    }
+    let current = TaskOrdering.orderedIDs(snapshot.tasks, stored: taskOrderIDs)
+    let next = TaskOrdering.merging(visible, into: current)
+    guard next != current else { return }
+    prepareActionHistory()
+    actionHistory.record([.taskOrder(current)])
     TaskOrderPreferences.save(next, space: settings.identity, userID: snapshot.user.id)
     withAnimation(.snappy(duration: 0.12, extraBounce: 0)) { taskOrderIDs = next }
+    guard settings.mode == .server, let ordering = repository as? any TaskOrderRepository else { return }
+    snapshot.taskOrder = TaskOrder(taskIDs: next, revision: snapshot.taskOrder?.revision ?? 0)
+    mutationRevision += 1
+    hasPendingTaskOrder = true
+    let source = settings.identity
+    let userID = snapshot.user.id
+    let previous = taskOrderSaveTask
+    taskOrderSaveTask = Task { @MainActor [weak self] in
+      await previous?.value
+      guard let self, self.settings.identity == source, self.snapshot.user.id == userID else { return }
+      do {
+        _ = try await ordering.saveTaskOrder(visible, initializeOnly: false)
+        guard self.settings.identity == source, self.snapshot.user.id == userID else { return }
+        if let sync = ordering as? OfflineTaskRepository { self.receiveSyncStatus(await sync.status()) }
+        self.cacheSnapshot()
+        Task { await self.refresh() }
+      } catch {
+        guard self.settings.identity == source, self.snapshot.user.id == userID else { return }
+        self.errorMessage = self.friendly(error)
+        if self.taskOrderIDs == next {
+          self.taskOrderIDs = current
+          self.snapshot.taskOrder?.taskIDs = current
+          TaskOrderPreferences.save(current, space: source, userID: userID)
+          self.hasPendingTaskOrder = false
+        }
+      }
+    }
+  }
+  public func saveBoardOrder(_ ids: [UUID]) {
+    let current = BoardOrderPreferences.orderedIDs(snapshot.boards, space: settings.identity, userID: snapshot.user.id)
+    guard ids != current, ids.count == current.count, Set(ids) == Set(current) else { return }
+    prepareActionHistory()
+    actionHistory.record([.boardOrder(current)])
+    BoardOrderPreferences.save(ids, space: settings.identity, userID: snapshot.user.id)
+    withAnimation(.snappy(duration: 0.12, extraBounce: 0)) { boardOrderIDs = ids }
   }
   public func displayListIDs(_ lists: [TaskList], includeInbox: Bool) -> [UUID] {
     let visible = Set(lists.map(\.id))
@@ -525,7 +566,7 @@ public final class AppModel {
     syncWarning = nil
     reminderWarning = nil
     snapshot = Snapshot()
-    listOrderIDs = []; taskOrderIDs = []
+    boardOrderIDs = []; listOrderIDs = []; taskOrderIDs = []; hasPendingTaskOrder = false
     actionHistory.prepare(source: "signed-out")
     dayProgress.setOverdueVisible(false)
     dayProgress.update(tasks: [], space: "signed-out")
@@ -541,10 +582,14 @@ public final class AppModel {
     catch { reminderWarning = friendly(error) }
   }
   private func applyLocalListOrder() {
+    boardOrderIDs = BoardOrderPreferences.orderedIDs(snapshot.boards, space: settings.identity, userID: snapshot.user.id)
     listOrderIDs = ListOrderPreferences.orderedIDs(
       snapshot.lists, space: settings.identity, userID: snapshot.user.id)
-    taskOrderIDs = TaskOrderPreferences.orderedIDs(
-      snapshot.tasks, space: settings.identity, userID: snapshot.user.id)
+    if settings.mode == .server, let order = snapshot.taskOrder {
+      taskOrderIDs = TaskOrdering.orderedIDs(snapshot.tasks, stored: order.taskIDs)
+    } else {
+      taskOrderIDs = TaskOrderPreferences.orderedIDs(snapshot.tasks, space: settings.identity, userID: snapshot.user.id)
+    }
 
     var orderedSnapshot = snapshot
     ListOrderPreferences.apply(to: &orderedSnapshot, space: settings.identity)
@@ -571,6 +616,25 @@ public final class AppModel {
       Logger(subsystem: "com.alan.planner", category: "widgets").error("Widget export failed: \(error.localizedDescription, privacy: .public)")
       // Widget export must never prevent a successful task save.
     }
+  }
+  private func importWidgetCreations() async {
+    guard let store = WidgetStore.shared else { return }
+    let key = settings.identity + ":" + snapshot.user.id.uuidString
+    do {
+      for command in try store.creations(sourceKey: key) {
+        guard settings.identity + ":" + snapshot.user.id.uuidString == key else { return }
+        if !snapshot.tasks.contains(where: { $0.id == command.id }) {
+          if command.acknowledged {
+            if isOffline { continue }
+          } else {
+            _ = try await UndoGrouping.$replaying.withValue(true) {
+              try await mutate(.restore(.task(command.task)))
+            }
+          }
+        }
+        try store.removeCreation(command.id)
+      }
+    } catch { syncWarning = friendly(error) }
   }
   private func importWidgetCompletions() async {
     guard let store = WidgetStore.shared else { return }

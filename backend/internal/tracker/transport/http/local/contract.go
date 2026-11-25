@@ -9,6 +9,8 @@ import (
 )
 
 type trackerUseCase interface {
+	GetTaskOrder(context.Context, identity.Actor) (models.TaskOrder, error)
+	SetTaskOrder(context.Context, identity.Actor, *models.SetTaskOrderIn) (models.TaskOrder, error)
 	RestoreComment(context.Context, identity.Actor, uuid.UUID) (models.Comment, error)
 	RestoreTag(context.Context, identity.Actor, uuid.UUID) (models.Tag, error)
 	RestoreList(context.Context, identity.Actor, uuid.UUID) (models.List, error)

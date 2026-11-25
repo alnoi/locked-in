@@ -128,12 +128,21 @@ final class BoardReorderSession {
 }
 final class ListDragProvider: NSItemProvider, @unchecked Sendable {
   let text: String
+  let typeIdentifier: String?
   private let ended: @Sendable () -> Void
-  init(text: String, ended: @escaping @Sendable () -> Void) {
+  init(text: String, typeIdentifier: String? = nil, ended: @escaping @Sendable () -> Void) {
     self.text = text
+    self.typeIdentifier = typeIdentifier
     self.ended = ended
     super.init()
-    registerObject(text as NSString, visibility: .ownProcess)
+    if let typeIdentifier {
+      registerDataRepresentation(forTypeIdentifier: typeIdentifier, visibility: .ownProcess) { completion in
+        completion(Data(text.utf8), nil)
+        return nil
+      }
+    } else {
+      registerObject(text as NSString, visibility: .ownProcess)
+    }
   }
   func finish() { ended() }
   deinit { ended() }

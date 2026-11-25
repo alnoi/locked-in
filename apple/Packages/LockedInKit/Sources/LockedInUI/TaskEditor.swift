@@ -195,9 +195,10 @@ struct TaskEditor: View {
         }
       }
     }
-    .sheet(item: $child) { TaskEditor(model: model, presentation: $0).bugReportAccess(model: model, reserveSpace: true) }
+    .sheet(item: $child) { TaskEditor(model: model, presentation: $0) }
     .onAppear { titleFocused = isCreating }
     #if os(macOS)
+      .background { MacTaskBackgroundScrollLock().allowsHitTesting(false) }
       .frame(width: 380, height: 620)
     #else
       .presentationDetents([.large]).presentationDragIndicator(.visible)
@@ -646,7 +647,11 @@ struct TaskEditor: View {
 private struct TaskInspectorGlass: ViewModifier {
   @ViewBuilder func body(content: Content) -> some View {
     if #available(macOS 26.0, iOS 26.0, *) {
+      #if os(macOS)
+      content.glassEffect(.regular.tint(Color.black.opacity(0.12)), in: RoundedRectangle(cornerRadius: 20))
+      #else
       content.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
+      #endif
     } else {
       content.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
     }

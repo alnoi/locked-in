@@ -33,6 +33,7 @@ extension AppModel {
             case .change(let change): _ = try await mutate(change)
             case .taskOrder(let ids): saveTaskOrder(ids)
             case .listOrder(let ids): saveListOrder(ids)
+            case .boardOrder(let ids): saveBoardOrder(ids)
             }
             actionHistory.acknowledge(entry.id)
           }

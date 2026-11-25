@@ -4,10 +4,20 @@ import LockedInDomain
 import UniformTypeIdentifiers
 
 struct BugReportAttachment {
+  static let maxInputBytes = 30 * 1024 * 1024
+  static let supportedTypes: [UTType] = [.png, .jpeg, .heic, .heif, .gif, .tiff, .webP, .bmp]
+  static let formatsLabel = "PNG, JPG, HEIC/HEIF, GIF, TIFF, WebP, BMP"
+  private static var unsupportedFormat: TrackerError {
+    .validation("Этот формат не поддерживается. Выбери изображение из списка выше.")
+  }
   static func image(_ original: Data) throws -> Data {
-    guard original.count <= 30 * 1024 * 1024,
-      let source = CGImageSourceCreateWithData(original as CFData, nil) else {
-      throw TrackerError.validation("Не удалось прочитать картинку. Выбери другой скриншот.")
+    guard original.count <= maxInputBytes else {
+      throw TrackerError.validation("Файл больше 30 МБ. Выбери скриншот поменьше.")
+    }
+    guard let source = CGImageSourceCreateWithData(original as CFData, nil),
+      let identifier = CGImageSourceGetType(source), let type = UTType(identifier as String),
+      supportedTypes.contains(where: { type.conforms(to: $0) }) else {
+      throw unsupportedFormat
     }
     for dimension in [2000, 1600, 1200] {
       let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -25,8 +35,8 @@ struct BugReportAttachment {
   static func file(_ url: URL) throws -> Data {
     let scoped = url.startAccessingSecurityScopedResource()
     defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-    if let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 30 * 1024 * 1024 {
-      throw TrackerError.validation("Картинка слишком большая. Выбери скриншот поменьше.")
+    if let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > maxInputBytes {
+      throw TrackerError.validation("Файл больше 30 МБ. Выбери скриншот поменьше.")
     }
     return try image(Data(contentsOf: url, options: .mappedIfSafe))
   }
@@ -39,7 +49,7 @@ struct BugReportAttachment {
       guard let url = URL(dataRepresentation: data, relativeTo: nil) else { throw RequestFailure.invalidAttachment }
       return try file(url)
     }
-    throw TrackerError.validation("В буфере нет картинки. Скопируй скриншот и попробуй ещё раз.")
+    throw unsupportedFormat
   }
   private static func representation(_ provider: NSItemProvider, type: String) async throws -> Data {
     try await withCheckedThrowingContinuation { continuation in

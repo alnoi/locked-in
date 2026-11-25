@@ -5,6 +5,8 @@ type ErrorCode string
 const (
 	CodeInvalidAttachment  ErrorCode = "invalid_attachment"
 	CodeInvalidCredentials ErrorCode = "invalid_credentials"
+	CodeUserNotFound       ErrorCode = "user_not_found"
+	CodeWrongPassword      ErrorCode = "wrong_password"
 	CodeUsernameTaken      ErrorCode = "username_taken"
 	CodeInvalidUsername    ErrorCode = "invalid_username"
 	CodeInvalidPassword    ErrorCode = "invalid_password"

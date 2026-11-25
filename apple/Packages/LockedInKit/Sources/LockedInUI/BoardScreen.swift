@@ -225,7 +225,7 @@ struct BoardScreen: View {
           listID: list?.id ?? ListOrdering.inboxID, enabled: model.hasLoaded, session: dragSession,
           order: listIDs)
       )
-      .opacity(dragSession.source == (list?.id ?? ListOrdering.inboxID) ? 0.18 : 1)
+      .modifier(ReorderSourceAppearance(active: dragSession.source == (list?.id ?? ListOrdering.inboxID)))
       .coordinateSpace(name: list?.id ?? ListOrdering.inboxID)
       .onDrop(
         of: [UTType.text.identifier],
@@ -325,7 +325,7 @@ private struct BoardColumn: View {
         listID: listID ?? ListOrdering.inboxID, enabled: model.hasLoaded, session: dragSession,
         order: order)
     )
-    .opacity(dragSession.source == (listID ?? ListOrdering.inboxID) ? 0.18 : 1)
+    .modifier(ReorderSourceAppearance(active: dragSession.source == (listID ?? ListOrdering.inboxID)))
     .coordinateSpace(name: listID ?? ListOrdering.inboxID)
     .onDrop(
       of: [UTType.text.identifier],

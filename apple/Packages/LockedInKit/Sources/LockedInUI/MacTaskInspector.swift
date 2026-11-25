@@ -25,7 +25,7 @@
         model: model, presentation: TaskPresentation(taskID: task.id, input: TaskInput(task)),
         close: { binding.wrappedValue = false }
       )
-      .environment(\.locale, locale).environment(\.colorScheme, colorScheme).trackItAccent().bugReportAccess(model: model)
+      .environment(\.locale, locale).environment(\.colorScheme, colorScheme).trackItAccent()
       context.coordinator.show(content, anchoredTo: view, centered: centered)
     }
     static func dismantleNSView(_ view: NSView, coordinator: Coordinator) { coordinator.close() }
@@ -42,9 +42,21 @@
         let visible = parent.frame.intersection(screenBounds)
         let width: CGFloat = centered ? 380 : 392
         let height: CGFloat = 620
-        let onRight = screenBounds.maxX - task.maxX >= width
-          || task.minX - screenBounds.minX < width
         let area = visible.isEmpty ? screenBounds : visible
+        var workspace = area
+        if let sidebar = BoardSidebarView.views.allObjects.first(where: {
+          $0.window === parent && $0.enabled && !$0.isHiddenOrHasHiddenAncestor
+        }) {
+          let sidebarFrame = parent.convertToScreen(sidebar.convert(sidebar.bounds, to: nil))
+          if sidebarFrame.maxX > area.minX && sidebarFrame.minX < area.maxX {
+            let left = min(area.maxX, sidebarFrame.maxX)
+            workspace = NSRect(x: left, y: area.minY, width: area.maxX - left, height: area.height)
+          }
+        }
+        let prefersRight = task.midX < workspace.midX
+        let rightFits = screenBounds.maxX - task.maxX >= width
+        let leftFits = task.minX - screenBounds.minX >= width
+        let onRight = prefersRight ? (rightFits || !leftFits) : (!leftFits && rightFits)
         let x = centered ? area.midX - width / 2 : onRight ? task.maxX : task.minX - width
         var y = centered ? area.midY - height / 2 : task.midY - height / 2
         if y < area.minY || y + height > area.maxY { y = area.midY - height / 2 }
@@ -62,9 +74,16 @@
         window.appearance = parent.effectiveAppearance
         window.isOpaque = false
         window.backgroundColor = .clear
-        window.hasShadow = true
+        // Liquid Glass draws the card outline; the panel must not add a rectangular shadow.
+        window.hasShadow = false
         window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: body)
+        let hostingView = InspectorHostingView(rootView: body)
+        hostingView.centered = centered
+        hostingView.arrowOnLeft = onRight
+        hostingView.arrowY = arrowY
+        hostingView.wantsLayer = true
+        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+        window.contentView = hostingView
         panel = window
         let finalFrame = window.frame
         window.setFrame(finalFrame.insetBy(dx: finalFrame.width * 0.06, dy: finalFrame.height * 0.06), display: false)
@@ -114,6 +133,68 @@
           }
         }
       }
+    }
+  }
+  // Block background scrolling for both inspectors and sheet-based task editors.
+  struct MacTaskBackgroundScrollLock: NSViewRepresentable {
+    func makeNSView(context: Context) -> TaskScrollLockView { TaskScrollLockView() }
+    func updateNSView(_ view: TaskScrollLockView, context: Context) {}
+    static func dismantleNSView(_ view: TaskScrollLockView, coordinator: ()) { view.stop() }
+  }
+  final class TaskScrollLockView: NSView {
+    private var monitor: Any?
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func viewDidMoveToWindow() {
+      super.viewDidMoveToWindow()
+      stop()
+      guard window != nil else { return }
+      monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .swipe]) { [weak self] event in
+        guard let editorWindow = self?.window, let targetWindow = event.window else { return event }
+        var ancestor = editorWindow.sheetParent ?? editorWindow.parent
+        while let window = ancestor {
+          if targetWindow === window { return nil }
+          ancestor = window.sheetParent ?? window.parent
+        }
+        return event
+      }
+    }
+    func stop() {
+      if let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }
+    }
+    deinit { if let monitor { NSEvent.removeMonitor(monitor) } }
+  }
+  private final class InspectorHostingView<Content: View>: NSHostingView<Content> {
+    var centered = false
+    var arrowOnLeft = false
+    var arrowY: CGFloat = 0
+    override var isOpaque: Bool { false }
+    override func layout() {
+      super.layout()
+      guard let layer else { return }
+      // Mask the actual hosting layer, including AppKit/Glass backing layers.
+      // A transparent window alone does not exclude those layers outside the card.
+      let arrowWidth: CGFloat = centered ? 0 : 12
+      let card = CGRect(x: !centered && arrowOnLeft ? arrowWidth : 0, y: 0,
+        width: max(0, bounds.width - arrowWidth), height: bounds.height)
+      let path = CGMutablePath()
+      path.addRoundedRect(in: card, cornerWidth: 20, cornerHeight: 20)
+      if !centered {
+        let y = layer.isGeometryFlipped ? arrowY : bounds.height - arrowY
+        let edge = arrowOnLeft ? card.minX : card.maxX
+        let tip = arrowOnLeft ? bounds.minX : bounds.maxX
+        path.move(to: CGPoint(x: edge, y: y - 11))
+        path.addLine(to: CGPoint(x: tip, y: y))
+        path.addLine(to: CGPoint(x: edge, y: y + 11))
+        path.closeSubpath()
+      }
+      let mask = CAShapeLayer()
+      mask.frame = layer.bounds
+      mask.contentsScale = layer.contentsScale
+      mask.path = path
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      layer.mask = mask
+      CATransaction.commit()
     }
   }
   private final class InspectorPanel: NSPanel {

@@ -80,6 +80,11 @@ public struct WidgetStore: Sendable {
       for task in pending where !value.tasks.contains(where: { $0.id == task.id }) { value.tasks.append(task) }
       value.tags = remote.tags; value.updatedAt = remote.updatedAt
     }
+    for command in try creations(sourceKey: value.sourceKey)
+    where !value.tasks.contains(where: { $0.id == command.id }) {
+      value.tasks.append(command.task)
+      if !command.acknowledged { value.pendingTaskIDs.insert(command.id) }
+    }
     for command in try commands(sourceKey: value.sourceKey) {
       guard let index = value.tasks.firstIndex(where: { $0.id == command.taskID }) else { continue }
       if let ack = command.acknowledgedTask, value.tasks[index].updatedAt > ack.updatedAt { continue }
@@ -121,6 +126,30 @@ public struct WidgetStore: Sendable {
   public func remove(_ command: WidgetCompletion) throws {
     let url = commandURL(command.id)
     if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+  }
+  public func saveCreation(_ command: WidgetTaskCreation) throws {
+    guard try context()?.sourceKey == command.sourceKey else { throw AuthenticationError.sessionExpired }
+    try write(command, to: creationURL(command.id))
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+      CFNotificationName(Self.changeNotification as CFString), nil, nil, true)
+  }
+  public func creations(sourceKey: String) throws -> [WidgetTaskCreation] {
+    let folder = directory.appendingPathComponent("creations", isDirectory: true)
+    guard FileManager.default.fileExists(atPath: folder.path) else { return [] }
+    return try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+      .filter { $0.pathExtension == "json" }
+      .compactMap { url -> WidgetTaskCreation? in
+        do { return try JSONCodec.decoder().decode(WidgetTaskCreation.self, from: Data(contentsOf: url)) }
+        catch CocoaError.fileReadNoSuchFile { return nil }
+      }
+      .filter { $0.sourceKey == sourceKey }.sorted { $0.task.createdAt < $1.task.createdAt }
+  }
+  public func removeCreation(_ id: UUID) throws {
+    let url = creationURL(id)
+    if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+  }
+  private func creationURL(_ id: UUID) -> URL {
+    directory.appendingPathComponent("creations", isDirectory: true).appendingPathComponent(id.uuidString + ".json")
   }
   private func commandURL(_ id: UUID) -> URL {
     directory.appendingPathComponent("commands", isDirectory: true).appendingPathComponent(id.uuidString + ".json")

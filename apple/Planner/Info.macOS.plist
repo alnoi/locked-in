@@ -24,5 +24,18 @@
 	</dict>
 	<key>TrackItAppGroup</key>
 	<string>$(DEVELOPMENT_TEAM).com.alan.planner</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.alan.planner.sidebar-board</string>
+			<key>UTTypeDescription</key>
+			<string>TrackIt sidebar board</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

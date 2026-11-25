@@ -219,10 +219,11 @@ public struct Snapshot: Codable, Sendable {
   public var lists: [TaskList]
   public var tags: [TagRecord]
   public var comments: [CommentRecord]
+  public var taskOrder: TaskOrder?
   public init(
     user: UserRecord = UserRecord(), tasks: [TaskRecord] = [], boards: [BoardRecord] = [],
     lists: [TaskList] = [],
-    tags: [TagRecord] = [], comments: [CommentRecord] = []
+    tags: [TagRecord] = [], comments: [CommentRecord] = [], taskOrder: TaskOrder? = nil
   ) {
     self.user = user
     self.tasks = tasks
@@ -230,11 +231,12 @@ public struct Snapshot: Codable, Sendable {
     self.lists = lists
     self.tags = tags
     self.comments = comments
+    self.taskOrder = taskOrder
   }
   public var rootLists: [TaskList] { ListOrdering.sorted(lists) }
   public var generalBoard: BoardRecord? { boards.first(where: \.isGeneral) }
   public var owningBoards: [BoardRecord] { boards.filter { $0.parentID == nil } }
-  private enum CodingKeys: String, CodingKey { case user, tasks, boards, lists, tags, comments }
+  private enum CodingKeys: String, CodingKey { case user, tasks, boards, lists, tags, comments, taskOrder }
   public init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
     user = try values.decode(UserRecord.self, forKey: .user)
@@ -242,6 +244,7 @@ public struct Snapshot: Codable, Sendable {
     lists = try values.decode([TaskList].self, forKey: .lists)
     tags = try values.decode([TagRecord].self, forKey: .tags)
     comments = try values.decode([CommentRecord].self, forKey: .comments)
+    taskOrder = try values.decodeIfPresent(TaskOrder.self, forKey: .taskOrder)
     if let saved = try values.decodeIfPresent([BoardRecord].self, forKey: .boards) {
       boards = saved
     } else {
