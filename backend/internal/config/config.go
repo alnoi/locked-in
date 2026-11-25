@@ -9,6 +9,7 @@ import (
 )
 
 type Server struct {
+	TrustedProxies  []string      `env:"SERVER_TRUSTED_PROXIES" envSeparator:","`
 	Address         string        `env:"SERVER_ADDRESS,required"`
 	RequestTimeout  time.Duration `env:"SERVER_REQUEST_TIMEOUT,required"`
 	ShutdownTimeout time.Duration `env:"SERVER_SHUTDOWN_TIMEOUT,required"`

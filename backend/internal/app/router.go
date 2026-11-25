@@ -15,9 +15,10 @@ func newRouter(dependencies routerDependencies) *gin.Engine {
 	handlers, ready := dependencies.handlers, dependencies.ready
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
-	if err := router.SetTrustedProxies(nil); err != nil {
+	if err := router.SetTrustedProxies(settings.TrustedProxies); err != nil {
 		logger.Fatal("configure trusted proxies", zap.Error(err))
 	}
+	router.RemoteIPHeaders = []string{"X-Real-IP"}
 	apphttp.Configure(router, logger, settings)
 	router.Use(dependencies.authenticate)
 	router.GET("/livez", func(c *gin.Context) { c.Status(204) })
